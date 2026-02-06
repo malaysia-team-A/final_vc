@@ -1,0 +1,44 @@
+{
+  "feedbacks": [
+    {
+      "id": 1,
+      "timestamp": "2026-02-05T16:10:11.428581",
+      "session_id": "jwt_session",
+      "user_message": "say my DOB and grade",
+      "ai_response": "🔒 Security Check: Please enter your password to view examination results.",
+      "rating": "negative",
+      "comment": null
+    },
+    {
+      "id": 2,
+      "timestamp": "2026-02-06T10:30:38.129217",
+      "session_id": "jwt_session",
+      "user_message": "What programs does UCSI offer?",
+      "ai_response": "I apologize, but I encountered an error generating a response.",
+      "rating": "negative",
+      "comment": null
+    },
+    {
+      "id": 3,
+      "timestamp": "2026-02-06T10:30:38.658536",
+      "session_id": "jwt_session",
+      "user_message": "hello",
+      "ai_response": "I apologize, but I encountered an error generating a response.",
+      "rating": "negative",
+      "comment": null
+    },
+    {
+      "id": 4,
+      "timestamp": "2026-02-06T11:50:42.134397",
+      "session_id": "jwt_session",
+      "user_message": "hello",
+      "ai_response": "Hello there!",
+      "rating": "negative",
+      "comment": null
+    }
+  ],
+  "stats": {
+    "positive": 0,
+    "negative": 4
+  }
+}

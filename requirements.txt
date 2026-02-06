@@ -1,0 +1,13 @@
+flask
+pymongo
+python-dotenv
+langchain-core
+langchain-community
+faiss-cpu
+sentence-transformers
+pypdf2
+requests
+pandas
+openpyxl
+google-genai
+pyjwt
