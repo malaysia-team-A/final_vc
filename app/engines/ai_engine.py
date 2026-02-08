@@ -3,6 +3,7 @@ import re
 import json
 from google import genai # New SDK
 from .language_engine import multilingual  # Multi-language support (Updated relative import)
+from .feedback_engine import feedback_engine # [ADDED] RLHF Lite Support
 
 class AIEngine:
     def __init__(self, model_name="gemma-3-27b-it"):
@@ -38,6 +39,8 @@ Context:
 
 Conversation History:
 {conversation}
+
+{feedback_context}
 
 Question: {question}
 
@@ -84,10 +87,22 @@ Instructions:
             lang_instruction = multilingual.get_ai_language_instruction(language)
             
             if data_context:
+                # [MODIFIED] RLHF Lite: Get related examples
+                related_feedback = feedback_engine.get_related_examples(user_message)
+                
+                feedback_str = ""
+                if related_feedback["good"] or related_feedback["bad"]:
+                    feedback_str = "Reference History:\n"
+                    if related_feedback["good"]:
+                        feedback_str += "GOOD Examples (Follow style): " + str(related_feedback["good"]) + "\n"
+                    if related_feedback["bad"]:
+                        feedback_str += "BAD Examples (Avoid mistakes): " + str(related_feedback["bad"]) + "\n"
+
                 # PHASE 2: We have data, generate answer.
                 prompt = self.qa_template.format(
                     context=data_context,
                     conversation=conversation_text,
+                    feedback_context=feedback_str, # [ADDED] Inject feedback
                     question=user_message,
                     lang_instruction=lang_instruction
                 )

@@ -4,6 +4,7 @@ Collects and stores user feedback on AI responses
 """
 import json
 import os
+import re
 from datetime import datetime
 from typing import Optional, Dict, List
 
@@ -117,6 +118,40 @@ class FeedbackEngine:
         feedbacks = data.get("feedbacks", [])
         negative = [f for f in feedbacks if f.get("rating") == "negative"]
         return negative[-limit:][::-1]
+
+    def get_related_examples(self, current_query: str) -> Dict[str, List[Dict]]:
+        """
+        [ADDED] RLHF Lite: Get related feedback examples (Good/Bad)
+        """
+        # 1. Extract keywords (simple split by space)
+        # Filter out short words (length < 2)
+        keywords = [w for w in re.split(r'\s+', current_query) if len(w) >= 2]
+        
+        results = {"good": [], "bad": []}
+        
+        # 2. Search from MongoDB (Primary)
+        try:
+            from .db_engine import db_engine
+            if db_engine.connected:
+                feedbacks = db_engine.search_feedback_by_keywords(keywords, limit=10)
+                
+                for f in feedbacks:
+                    entry = {
+                        "question": f.get("user_message", ""),
+                        "answer": f.get("ai_response", "")
+                    }
+                    if f.get("rating") == "positive":
+                        results["good"].append(entry)
+                    elif f.get("rating") == "negative":
+                        results["bad"].append(entry)
+                        
+                # If we found enough examples, return
+                if results["good"] or results["bad"]:
+                    return results
+        except Exception as e:
+            print(f"Feedback Search Error: {e}")
+            
+        return results
 
 
 # Singleton instance

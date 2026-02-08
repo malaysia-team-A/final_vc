@@ -35,10 +35,28 @@
       "ai_response": "Hello there!",
       "rating": "negative",
       "comment": null
+    },
+    {
+      "id": 5,
+      "timestamp": "2026-02-08T22:54:17.588799",
+      "session_id": "jwt_session",
+      "user_message": "who are you?",
+      "ai_response": "Hi there! I'm Kai, a friendly university assistant. I can help you with information about the university and your student records.",
+      "rating": "negative",
+      "comment": null
+    },
+    {
+      "id": 6,
+      "timestamp": "2026-02-08T22:57:17.327740",
+      "session_id": "jwt_session",
+      "user_message": "안녕?",
+      "ai_response": "안녕하세요! 무엇을 도와드릴까요?",
+      "rating": "positive",
+      "comment": null
     }
   ],
   "stats": {
-    "positive": 0,
-    "negative": 4
+    "positive": 1,
+    "negative": 5
   }
 }

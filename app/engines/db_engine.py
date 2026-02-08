@@ -288,17 +288,19 @@ class DatabaseEngine:
     def save_feedback(self, feedback_data: Dict) -> bool:
         if self.db is None or not self.connected: return False
         try:
-            self.db.feedbacks.insert_one(feedback_data)
+            # [MODIFIED] Use existing 'Feedback' collection instead of creating new 'feedbacks'
+            self.db.Feedback.insert_one(feedback_data)
             return True
         except: return False
 
     def get_feedback_stats(self) -> Dict:
         if self.db is None or not self.connected: return {"total": 0}
         try:
+            # [MODIFIED] Use existing 'Feedback' collection for stats
             return {
-                "total": self.db.feedbacks.count_documents({}),
-                "positive": self.db.feedbacks.count_documents({"rating": "positive"}),
-                "negative": self.db.feedbacks.count_documents({"rating": "negative"})
+                "total": self.db.Feedback.count_documents({}),
+                "positive": self.db.Feedback.count_documents({"rating": "positive"}),
+                "negative": self.db.Feedback.count_documents({"rating": "negative"})
             }
         except: return {"total": 0}
 
@@ -314,6 +316,34 @@ class DatabaseEngine:
         try:
             return list(self.db.unanswered.find({}, {"_id": 0}).sort("timestamp", -1).limit(limit))
         except: return []
+
+    def search_feedback_by_keywords(self, keywords: List[str], limit: int = 5) -> List[Dict]:
+        """
+        [ADDED] RLHF Lite: Search feedbacks by keywords
+        """
+        if self.db is None or not self.connected: return []
+        
+        try:
+            # Construct regex query for each keyword
+            or_conditions = []
+            for kw in keywords:
+                if len(kw.strip()) < 2: continue
+                regex = {"$regex": kw.strip(), "$options": "i"}
+                or_conditions.append({"user_message": regex})
+                or_conditions.append({"ai_response": regex})
+                
+            if not or_conditions: return []
+            
+            # Search in 'Feedback' collection (unified)
+            cursor = self.db.Feedback.find(
+                {"$or": or_conditions}, 
+                {"_id": 0}
+            ).sort("timestamp", -1).limit(limit)
+            
+            return list(cursor)
+        except Exception as e:
+            print(f"Feedback Search Error: {e}")
+            return []
 
 # Singleton instance
 db_engine = DatabaseEngine()
