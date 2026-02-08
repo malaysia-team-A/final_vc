@@ -55,24 +55,36 @@ class FeedbackEngine:
             bool: True if saved successfully
         """
         try:
+            rating_norm = str(rating or "").strip().lower()
+            if rating_norm not in {"positive", "negative"}:
+                return False
+
+            session_norm = str(session_id or "guest_session").strip() or "guest_session"
+            user_message_norm = str(user_message or "").strip()
+            ai_response_norm = str(ai_response or "").strip()
+            comment_norm = None if comment is None else str(comment)
+
+            if not user_message_norm or not ai_response_norm:
+                return False
+
             data = self._load_data()
             
             feedback_entry = {
                 "id": len(data["feedbacks"]) + 1,
                 "timestamp": datetime.now().isoformat(),
-                "session_id": session_id,
-                "user_message": user_message[:500],  # Limit length
-                "ai_response": ai_response[:1000],   # Limit length
-                "rating": rating,
-                "comment": comment
+                "session_id": session_norm,
+                "user_message": user_message_norm[:500],  # Limit length
+                "ai_response": ai_response_norm[:1000],   # Limit length
+                "rating": rating_norm,
+                "comment": comment_norm
             }
             
             data["feedbacks"].append(feedback_entry)
             
             # Update stats
-            if rating == "positive":
+            if rating_norm == "positive":
                 data["stats"]["positive"] += 1
-            elif rating == "negative":
+            elif rating_norm == "negative":
                 data["stats"]["negative"] += 1
             
             self._save_data(data)
@@ -82,6 +94,19 @@ class FeedbackEngine:
                 from .db_engine import db_engine
                 if db_engine.connected:
                     db_engine.save_feedback(feedback_entry)
+                    
+                    # SELF-LEARNING: Positive Reinforcement
+                    if rating_norm == "positive":
+                        db_engine.save_learned_response(user_message_norm, ai_response_norm)
+                    
+                    # NEGATIVE LEARNING: Learn what NOT to say
+                    elif rating_norm == "negative":
+                        db_engine.save_bad_response(
+                            query=user_message_norm,
+                            bad_answer=ai_response_norm,
+                            reason=comment_norm or "User marked as incorrect"
+                        )
+                        
             except Exception as db_err:
                 print(f"MongoDB feedback save failed (non-critical): {db_err}")
             

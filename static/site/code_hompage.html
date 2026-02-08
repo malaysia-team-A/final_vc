@@ -306,7 +306,7 @@
 
                     <input id="secure-password" type="password"
                         class="w-full text-center text-xl font-bold tracking-widest border border-gray-200 rounded-lg py-2 mb-4 bg-white focus:bg-white outline-none focus:border-primary transition-colors"
-                        placeholder="••••" />
+                        placeholder="Enter password" />
 
                     <div class="grid grid-cols-2 gap-2">
                         <button onclick="hidePasswordScreen()"
@@ -502,7 +502,7 @@
 
                     hideVerifyScreen();
                     updateLoginButton();
-                    appendMessage(`✅ Identity Verified! Welcome, ${data.user.name}.`, 'ai');
+                    appendMessage(`??Identity Verified! Welcome, ${data.user.name}.`, 'ai');
                 } else {
                     alert(data.message || 'Verification failed.');
                 }
@@ -532,7 +532,7 @@
 
                 if (data.success) {
                     hidePasswordScreen();
-                    appendMessage("🔓 High Security Mode Enabled (10 mins). You can now verify your grades.", 'ai');
+                    appendMessage("?뵑 High Security Mode Enabled (10 mins). You can now verify your grades.", 'ai');
                     // Automatically retry the last logical request if possible, or just ask user to ask again.
                     // For simplicity, ask user to re-type.
                 } else {
@@ -572,14 +572,14 @@
 
                 // Handle Auth/Security Challenges
                 if (data.error) {
-                    appendMessage("⚠️ Error: " + data.error, 'ai');
+                    appendMessage("?좑툘 Error: " + data.error, 'ai');
                 }
                 else if (data.type === 'verify_required' || data.type === 'login_hint') {
-                    appendMessage("🔒 " + data.response, 'ai');
+                    appendMessage("?뵏 " + data.response, 'ai');
                     showVerifyScreen();
                 }
                 else if (data.type === 'password_required' || data.type === 'password_prompt') {
-                    appendMessage("🔒 " + data.response, 'ai');
+                    appendMessage("?뵏 " + data.response, 'ai');
                     pulseSecurityPanel();
                     openHighSecurityPanel();
                 }
@@ -622,7 +622,7 @@
                 const btn = document.createElement('button');
                 btn.onclick = () => sendChip(item);
                 btn.className = "shrink-0 whitespace-nowrap bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-full px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-red-50 hover:text-primary hover:border-red-200 transition-colors shadow-sm animate-fade-in-up";
-                btn.textContent = "✨ " + item;
+                btn.textContent = "??" + item;
                 chips.appendChild(btn);
             });
             // Auto scroll chips to start
@@ -699,7 +699,7 @@
             const u = container.getAttribute('data-question');
             const a = container.getAttribute('data-answer');
 
-            container.innerHTML = `<span class="text-xs text-gray-400 ml-1">Thanks! ${rating === 'positive' ? '👍' : '👎'}</span>`;
+            container.innerHTML = `<span class="text-xs text-gray-400 ml-1">Thanks! ${rating === 'positive' ? '?몟' : '?몠'}</span>`;
 
             try {
                 await fetch('/api/feedback', {

@@ -1,79 +1,102 @@
-# 📊 UCSI 챗봇 프로젝트 현황 보고서
+﻿# UCSI 버디 프로젝트 상태 분석
 
-## 프로젝트 완성도: ~95%
+- 기준일: 2026-02-08
+- 분석 기준: 현재 코드(`main.py`, `app/engines/*`), 실행 리포트(`data/*.csv`), MongoDB 실조회 결과
 
-최종 업데이트: 2026-02-06
+## 1. 전체 진행률
 
----
+현재 완성도(운영 안정성 기준)는 **약 78%**로 판단합니다.
 
-## ✅ 완성된 핵심 기능
+- 강점: RAG/인증/백엔드 라우팅/기본 QA 자동화
+- 미완료: 프론트엔드 UX 안정화, 일부 도메인 데이터 커버리지, 회귀 자동화 체계화
 
-| 기능 | 상태 | 구현 위치 |
-|------|------|----------|
-| **Conversational Logic Flow** (대화 흐름) | ✅ 완성 | `main.py` → `ai_engine.py` |
-| **Intent Recognition** (의도 인식) | ✅ 완성 | `ai_engine.py` |
-| **JWT 인증 시스템** | ✅ 완성 | `auth_utils.py`, `main.py` |
-| **이중 인증 (성적 조회)** | ✅ 완성 | `main.py` verify_high_security |
-| **Knowledge Base / Vector DB** | ✅ 완성 | `rag_engine.py` FAISS |
-| **MongoDB Atlas 연동** | ✅ 완성 | `db_engine.py` 9개 컬렉션 |
-| **Response Formatting & NLG** | ✅ 완성 | Google Gemini + 다국어 |
-| **Read-only DB Access** | ✅ 완성 | 조회만 가능, 수정 불가 |
-| **Log Anonymization** | ✅ 완성 | `logging_utils.py` |
-| **User Feedback** (👍/👎) | ✅ 완성 | `feedback_engine.py` |
-| **Admin Dashboard UI** | ✅ 완성 | `admin/admin.html` |
-| **Document Upload** | ✅ 완성 | `/api/admin/upload` |
-| **FAQ 캐싱 시스템** | ✅ 완성 | `faq_cache_engine.py` |
-| **미응답 질문 로깅** | ✅ 완성 | `UnansweredQuestionManager` |
-| **피드백 기반 자동 학습** | ✅ 완성 | `main.py:submit_feedback` |
-| **교직원 검색** | ✅ 완성 | `db_engine.search_staff` |
-| **학기/등록 상태 조회** | ✅ 완성 | `db_engine.get_semester_info` |
-| **다국어 지원** (한/영/중) | ✅ 완성 | `language_engine.py` |
+## 2. 영역별 상태
 
----
+| 영역 | 상태 | 비고 |
+|---|---|---|
+| API/서버 구조 | 완료 | `/api/chat`, `/api/chat/stream`, `/api/login` 등 핵심 엔드포인트 동작 |
+| 인증/보안 | 진행중(안정) | 로그인 + 2차 인증 분리 동작, 토큰 블랙리스트는 미구현 |
+| RAG 파이프라인 | 진행중(핵심 완료) | 강제 RAG 라우팅, 쿼리 리라이트/리랭크/후처리 포함 |
+| DB 연동 | 완료 | `UCSI_DB` 연결 및 11개 컬렉션 접근 확인 |
+| 일반대화 UX | 진행중 | 어투/짧은 응답 개선 일부 반영, 동문서답 잔여 가능성 |
+| 프론트엔드 UI 안정성 | 미완료 | 버튼 클릭 불가/문구 깨짐/표기 불일치 이슈 존재 |
+| 피드백 루프 | 완료(기본) | `/api/feedback` 저장 및 FAQ 자동 캐시 연결 |
+| 테스트 자동화 | 진행중 | Strict QA/Stress 스크립트 존재, CI 연동은 미완료 |
 
-## 🚧 개선 가능 항목 (~5% 미완성)
+## 3. 검증 결과(최신 파일 기준)
 
-| 항목 | 현재 상태 | 권장 사항 |
-|------|----------|----------|
-| **데모 영상** | 없음 | 프로덕션 전 녹화 권장 |
-| **교수진 상세 프로필** | 기본 정보만 | DB 확장 시 개선 가능 |
-| **자동 테스트 스위트** | 없음 | pytest 추가 권장 |
-| **관리자 인증** | 공개 접근 | 실 배포 시 인증 추가 필요 |
+### 3.1 Strict QA
 
----
+- 파일: `data/reports/strict_qa_report_latest.csv`
+- 결과: `58 / 58` 통과 (`100%`)
 
-## 📁 파일 구조
+### 3.2 Stress Test
 
-```
-project_MALAYSIA/
-├── main.py              # Flask 서버, API 엔드포인트
-├── ai_engine.py         # Google GenAI 연동
-├── rag_engine.py        # FAISS 벡터 검색
-├── db_engine.py         # MongoDB 연결
-├── data_engine.py       # 데이터 접근 레이어
-├── faq_cache_engine.py  # FAQ 캐싱 + 미응답 관리
-├── feedback_engine.py   # 피드백 수집
-├── language_engine.py   # 다국어 처리
-├── auth_utils.py        # JWT 인증
-├── logging_utils.py     # 로그 익명화
-├── learning_engine.py   # 학습 이슈 로깅
-├── admin/
-│   └── admin.html       # 관리자 대시보드
-├── UI_hompage/
-│   └── code_hompage.html # 사용자 채팅 UI
-└── knowledge_base/      # RAG 벡터 저장소
-```
+- 파일: `data/reports/stress_test_report_latest.csv`
+- 샘플 수: `300`
+- 성공: `300 / 300`
+- 평균 지연: `3.306s`
+- P50: `2.184s`
+- P95: `8.698s`
+- 최대: `14.518s`
 
----
+## 4. MongoDB 연동 상태(UCSI_DB 실조회)
 
-## 📈 완성도 요약
+컬렉션 `11개` 접근 확인:
 
-| 영역 | 완성도 |
-|------|--------|
-| 핵심 대화 기능 | 100% |
-| 인증 시스템 | 100% |
-| RAG/지식 검색 | 95% |
-| 피드백/학습 시스템 | 95% |
-| 관리자 기능 | 90% |
-| 문서화 | 95% |
-| **전체** | **~95%** |
+1. `UCSI` (500)
+2. `Hostel` (7)
+3. `UCSI_ MAJOR` (117)
+4. `USCI_SCHEDUAL` (86)
+5. `UCSI_FACILITY` (5)
+6. `UCSI_HOSTEL_FAQ` (4)
+7. `UCSI_STAFF` (17)
+8. `UCSI_University_Blocks_Data` (8)
+9. `Feedback` (12)
+10. `LearnedQA` (1)
+11. `BadQA` (2)
+
+확인 포인트:
+
+- 서비스가 읽기 중심으로 작동하는 구조는 유지됨.
+- 컬렉션 명명(`USCI_SCHEDUAL`, `UCSI_ MAJOR`)이 비표준이라 매핑 관리가 필요함.
+- 일부 도메인 질문은 원천 DB 데이터 부재로 `NO_DATA` 응답이 정상 동작함.
+
+## 5. 핵심 문제점
+
+1. 프론트엔드 클릭 안정성
+- 사용자 보고: 챗봇 버튼 클릭 불가/오동작
+- 영향: 핵심 기능 접근 불가로 체감 품질 급락
+
+2. UI 텍스트/브랜딩 불일치
+- 코드 기준 이름 정책은 `Buddy`/`UCSI buddy`이나, 일부 화면은 다른 표기 사용
+- 영향: 사용자 혼란 및 신뢰도 저하
+
+3. 문자열 깨짐(인코딩 잔여)
+- UI 문구 일부가 깨져 표시되는 구간 존재
+- 영향: 가독성/전문성 하락
+
+4. 데이터 커버리지 한계
+- DB에 없는 질문에서 응답 정책은 있으나, 사용자 기대 대비 빈도 높을 수 있음
+- 영향: "알려줄 수 없음" 체감 증가
+
+5. 회귀 자동화 미흡
+- 테스트 스크립트는 있으나 PR/배포 단위의 자동 게이트가 없음
+- 영향: UI/응답 품질 재발 가능성
+
+## 6. 다음 작업 우선순위
+
+1. P0: 챗봇 버튼 클릭 불가 원인 수정(레이어/z-index/이벤트 바인딩 점검)
+2. P0: 화면 표기명/문구를 `UCSI buddy` 기준으로 일괄 통일
+3. P1: 깨진 문자열 교정 및 메시지 가독성 개선(폰트/행간/키-값 포맷)
+4. P1: NO_DATA 응답 문구 템플릿을 질문 유형별로 세분화
+5. P2: Strict QA + Stress 테스트를 재실행하고 회귀 리포트 자동화
+
+## 7. 성공 기준(운영 관점)
+
+다음 4가지를 동시에 만족하면 "기본에 충실하고 견고"한 수준으로 판단합니다.
+
+1. 의도 정합성: 질문 의도와 라우팅 경로가 일치한다.
+2. 보안 정합성: 로그인/2차 인증 조건이 정확히 지켜진다.
+3. 근거 정합성: 도메인 답변은 DB/RAG 근거가 있으며, 없으면 명확히 없다고 말한다.
+4. UX 정합성: 답변이 짧고 읽기 쉬우며, 버튼/입력/추천질문이 자연스럽게 동작한다.

@@ -67,9 +67,9 @@ class MultilingualResponder:
     # Common phrases in different languages
     PHRASES = {
         'greeting': {
-            'ko': '안녕하세요! UCSI 대학교 도우미 Kai입니다. 무엇을 도와드릴까요?',
-            'zh': '您好！我是UCSI大学助手Kai。有什么可以帮助您的？',
-            'en': 'Hello! I\'m Kai, your UCSI University assistant. How can I help you?'
+            'ko': '안녕하세요! UCSI buddy입니다. 무엇을 도와드릴까요?',
+            'zh': '您好！我是 UCSI buddy。有什么可以帮助您的？',
+            'en': 'Hello! I\'m Buddy from UCSI buddy. How can I help you?'
         },
         'login_required': {
             'ko': '이 정보를 조회하려면 로그인이 필요합니다.',

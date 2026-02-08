@@ -1,48 +1,53 @@
-# UCSI University AI 챗봇 프로젝트
+﻿# UCSI 버디 프로젝트 문서 허브
 
-## 개요
-**Flask** 기반의 대학 AI 챗봇 시스템입니다. **RAG (검색 증강 생성)** 기술을 활용하여 정확한 학사 정보를 제공하며, **이중 인증** 시스템을 통해 성적과 같은 민감한 개인 정보를 안전하게 보호합니다.
+- 문서 기준일: 2026-02-08
+- 서비스 표기명: `UCSI buddy`
+- 챗봇 응답명: `Buddy`
 
-## 주요 기능
-- **AI 채팅**: Google Gemini 연동 + 단일 호출 최적화, 다국어(한/영/중) 자동 지원
-- **스마트 FAQ**: 자주 묻는 질문 캐싱 및 사용자 피드백 기반 자동 학습
-- **멀티소스 RAG**: PDF 문서 + MongoDB(학생/교수/학기 정보) 통합 검색
-- **보안 시스템**: JWT 기반 인증 + 2차 비밀번호(성적 조회 시), 대화 기록 내보내기 기능
-- **관리자 기능**: 대시보드 UI, 미응답 질문 관리, PDF 문서 업로드, 피드백 통계 시각화
+## 1. 프로젝트 요약
+이 프로젝트는 **UCSI 대학 도메인 RAG 챗봇**을 목표로 하며, 다음 2가지를 동시에 만족하도록 설계되어 있습니다.
 
-## 빠른 시작 (Quick Start)
+1. 대학/학생 관련 질문은 DB·RAG 근거를 우선 사용한다.
+2. 일반 대화/일반 상식 질문은 짧고 자연스럽게 답한다.
 
-### 1. 패키지 설치
+핵심 스택은 `Flask + Gemini + MongoDB Atlas + FAISS`입니다.
+
+## 2. 핵심 원칙
+
+- `RAG 우선`: UCSI 도메인 질문은 강제 RAG 라우팅.
+- `DB 원본 유지`: MongoDB 원본 데이터를 그대로 사용(무단 seed 삽입 없음).
+- `인증 분리`: 일반 로그인과 2차 인증(성적/GPA)을 분리.
+- `NO_DATA 정책`: 도메인 질문인데 근거가 없으면 "DB에 정보가 없습니다" 계열 응답.
+- `응답 UX`: 장황한 답변 대신 짧고 의도 중심으로 응답.
+
+## 3. 문서 인덱스
+
+- `docs/PROJECT_SPEC_V3_RAG_FIRST.md`: RAG 중심 제품 명세(v3)
+- `docs/SYSTEM_WORKFLOW.md`: 실제 쿼리 처리 워크플로우와 알고리즘
+- `docs/PROJECT_STATUS_ANALYSIS.md`: 최신 진행률/검증 결과/리스크
+- `docs/HANDOVER.md`: 다음 세션용 인수인계 문서
+- `docs/project_plan_extracted.txt`: `project_plan.pdf` 추출 텍스트(원문 보존용)
+
+## 4. 빠른 실행
+
 ```bash
 pip install -r requirements.txt
-```
-
-### 2. 환경 설정 (.env)
-프로젝트 루트에 `.env` 파일을 생성하고 다음 정보를 입력하세요:
-- `GOOGLE_API_KEY`: Google AI API 키
-- `MONGO_URI`: MongoDB Atlas 연결 문자열
-- `SECRET_KEY`: JWT 암호화 키
-
-### 3. 서버 실행
-```bash
 python main.py
 ```
-또는 `start_chatbot.bat` 파일을 실행하세요.
 
-- **사용자 접속**: `http://localhost:5000/site/code_hompage.html`
-- **관리자 접속**: `http://localhost:5000/admin`
+- 사용자 UI: `http://localhost:5000/site/code_hompage.html`
+- 관리자 UI: `http://localhost:5000/admin`
 
-## 파일 구조 (File Structure)
-| 경로 | 설명 |
-|------|------|
-| `main.py` | Flask 메인 서버 및 API 엔드포인트 |
-| `app/engines/` | 핵심 엔진 모듈 (AI, DB, RAG, 피드백 등) |
-| `app/utils/` | 유틸리티 모듈 (인증, 로깅) |
-| `data/` | 데이터 파일 (DB, Config, RAG 저장소) |
-| `docs/` | 프로젝트 문서 |
-| `static/` | 정적 리소스 (웹페이지, 관리자 페이지) |
+## 5. 현재 확인된 핵심 상태
 
-## 문서 (Documents)
-- **상세 인수인계 (Handover)**: [HANDOVER.md](HANDOVER.md)
-- **기술 명세서 (Spec)**: [Project_SPEC.md](Project_SPEC.md)
-- **구현 계획 (Plan)**: [Implementation_Plan.md](../../../.gemini/antigravity/brain/d06d4b6d-a518-4376-afb7-6c3aad018f90/implementation_plan.md)
+- 백엔드 API 라우팅/인증/RAG 파이프라인은 동작함.
+- MongoDB `UCSI_DB` 연결 및 컬렉션 조회 가능.
+- 자동 QA/스트레스 테스트 스크립트와 리포트 파일 존재.
+- 프론트엔드는 **클릭/문구/가독성 관련 잔여 버그**가 있어 추가 안정화 필요.
+
+## 6. 오늘 기준 우선 과제
+
+1. 챗봇 열기 버튼 클릭 불가 이슈 재현 및 수정
+2. UI 문구/표기 통일 (`UCSI buddy`, `Buddy`)
+3. 깨진 UI 문자열/가독성 개선
+4. 회귀 테스트 재실행 후 결과 문서 갱신

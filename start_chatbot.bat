@@ -24,10 +24,15 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
+echo [2.5/3] Checking Dependencies...
+python -m pip install -r requirements.txt
+
+echo.
 echo [3/3] Starting server...
 echo.
-echo Server will start at: http://localhost:8000
+echo Server will start at: http://localhost:5000
 echo Press Ctrl+C to stop the server
 echo.
 
 python main.py
+pause

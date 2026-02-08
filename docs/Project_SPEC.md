@@ -83,7 +83,7 @@
 ## 5. 배포 및 테스트
 - **운영 체제**: Windows (로컬 개발) / Linux (서버 배포 권장)
 - **API 키 관리**: `.env` 파일을 통한 보안 관리
-- **실행**: `python main.py` 실행 후 `check_system.py`로 무결성 검증
+- **실행**: `python main.py` 실행 후 `python scripts/checks/check_system.py`로 무결성 검증
 
 ---
 

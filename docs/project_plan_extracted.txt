@@ -1,0 +1,53 @@
+AI ChatBotUCSI INTERNSHIP PROGRAM
+
+
+AI ChatBotUCSI INTERNSHIP PROGRAM1. PROJECT OVERVIEW This project aims to develop aPython-based AI Chatbot systemwithintwo weeks (40 total hours)to supporting queries ranging from admission, programmes, and faculty information to academic records, results, and campus life services.본프로젝트는2주(총40시간)내에Python 기반AI 챗봇시스템을개발하여, 입학, 학과및학부정보부터학적, 성적, 그리고캠퍼스생활관련서비스에이르기까지다양한문의를지원하는것을목표로합니다.
+
+
+AI ChatBotUCSI INTERNSHIP PROGRAMThis project emphasizes:  1.Short development cycle (2 weeks/40 hours)  2.Team-based competition (2 parallel teams)  3.Integration with UCSI Database4.An AI system with basic self-learning and continuous improvement capability이프로젝트는다음사항을강조합니다:1.짧은개발주기(2주/40시간)2.팀기반경쟁(2개의병렬팀)3.UCSI 데이터베이스와의통합4.기본적인자기학습및지속적개선능력을갖춘AI 시스템1. PROJECT OVERVIEW 
+
+AI ChatBotUCSI INTERNSHIP PROGRAM2. OVERALL SYSTEM ARCHITECTUREHIGH-LEVEL SYSTEM LOGIC࢚ਤदझమܻ֤൒ܴThe AI conversation engine handles interpretation and natural language expression,while the business logic layer enforces rules and guarantees factual correctness.AI 대화엔진은사용자의도를이해하고표현을생성하며,비즈니스로직계층은규칙을적용하고사실의정확성을보장합니다.
+
+AI ChatBotUCSI INTERNSHIP PROGRAM2. OVERALL SYSTEM ARCHITECTURERECOMMENDED TECHNOLOGY STACKBACKEND•Python 3.10 +•FastAPI (API services)•JWT / OAuth2 (authentication)୶ୌӝࣿझఖ
+
+AI ChatBotUCSI INTERNSHIP PROGRAM2. OVERALL SYSTEM ARCHITECTURE
+AI / NLP Module•Large Language Model (e.g. OpenAI API / local LLM such as LLaMA or Mistral)•LangChain (conversation flow & tool orchestration)•Vector Database (FAISS / Chroma)•Embedding models (text vectorization)RECOMMENDED TECHNOLOGY STACK୶ୌӝࣿझఖ
+
+AI ChatBotUCSI INTERNSHIP PROGRAM2. OVERALL SYSTEM ARCHITECTURE
+Database•UCSI Database (read-only / controlled access)•Vector Database (FAISS / Chroma)RECOMMENDED TECHNOLOGY STACK୶ୌӝࣿझఖ
+
+AI ChatBotUCSI INTERNSHIP PROGRAM3. FUNCTIONAL MODULESQuery & Consultation Functions૕੄߂׸࢚ӝמGeneral Information Queries(No Authentication Required)Student / Lecturer-Specific Queries (Authentication Required)UCSI University general informationStudent enrollment statusFaculty and school introductionsRegistered programmes and semester statusProgramme and course informationAcademic results inquiry (Student ID & Password)Campus facilitiesHostel types, fees, and application guidance
+
+AI ChatBotUCSI INTERNSHIP PROGRAM3. FUNCTIONAL MODULESCONVERSATIONALLOGIC FLOW؀ചܻ֤൒ܴ
+
+AI ChatBotUCSI INTERNSHIP PROGRAM4. SELF LEARNING CAPABILITYDEFINITION OF SELF-LEARNING (Within Project Scope)੗ӝ೟ण੿੄	೐۽ં౟ߧਤղ
+Within the limited two-week timeframe, self-learning does not imply autonomous intelligence, but rather:•Continuous ingestion of new knowledge•Improvement of responses based on feedback•Human-controlled knowledge management mechanisms
+
+AI ChatBotUCSI INTERNSHIP PROGRAM4. SELF LEARNING CAPABILITYDEFINITION OF SELF-LEARNING (Within Project Scope)੗ӝ೟णݫழפ્ҳഅ•Upload new documents(PDF / Word / Text)•Update program or policy informationAdmin Knowledge Management Panel
+
+AI ChatBotUCSI INTERNSHIP PROGRAM4. SELF LEARNING CAPABILITYDEFINITION OF SELF-LEARNING (Within Project Scope)੗ӝ೟णݫழפ્ҳഅVectorization PipelineDocumentsText ChuckingEmbedingVector DB
+
+AI ChatBotUCSI INTERNSHIP PROGRAM4. SELF LEARNING CAPABILITYDEFINITION OF SELF-LEARNING (Within Project Scope)੗ӝ೟णݫழפ્ҳഅ•User satisfaction / dissatisfaction tagging•Logging unanswered or low-confidence questionsConversation Feedback Learning
+
+AI ChatBotUCSI INTERNSHIP PROGRAM4. SELF LEARNING CAPABILITYDEFINITION OF SELF-LEARNING (Within Project Scope)੗ӝ೟णݫழפ્ҳഅ•Convert high-frequency questions into rule-based answers•Use AI to handle long-tail or complex queriesHybrid Rule-Based + AI Optimization
+
+AI ChatBotUCSI INTERNSHIP PROGRAM5. Team Division & Role AllocationTeam Formation Principles౱ҳࢿਗ஗Team A and Team B have balanced and comparable skill distributionsEach team is capable of AI development, system logic, and user experience design
+
+AI ChatBotUCSI INTERNSHIP PROGRAM5. Team Division & Role AllocationTEAM A COMPOSITION"౱ҳࢿ3Intelligent Media Engineering2AI Engineers1Computer EngineerUI/UX, Chat Experience, FrontendNLP, Prompt Design, Embeddings, RAGArchitecture & Security (Shared)
+
+AI ChatBotUCSI INTERNSHIP PROGRAM5. Team Division & Role AllocationTEAM B COMPOSITION#౱ҳࢿ3Intelligent Media Engineering2AI Engineers1Intelligent MediaEngineeringUI/UX, Chat Experience, FrontendNLP, Prompt Design, Embeddings, RAGAssist Architecture & Security and Frontend (Share)
+
+AI ChatBotUCSI INTERNSHIP PROGRAM5. WORK SCHEDULETotal Time Allocated୨੘সदр
+
+AI ChatBotUCSI INTERNSHIP PROGRAM5. WORK SCHEDULEWeek 1 — Core Development઱ର೨बѐߊProject kickoff, architecture design, data field confirmationDay 1FastAPI setup, Basic conversation flow, Intent classification design Day 2Database connection, Programme & faculty queries, Initial UI prototypeDay 3Vector knowledge base implementationDay 4Internal testingDay 5
+
+AI ChatBotUCSI INTERNSHIP PROGRAM5. WORK SCHEDULEWeek 2 — Enhancement & Demo઱ରӝמѐࢶ߂ݽؘStudent authentication mechanism, Enrollment & registration status queriesDay 6Academic results query (access-controlled), security, logging & auditDay 7Self-learning module implementation, Admin knowledge upload panelDay 8Bug fixing and optimization, Demo scenario preparationDay 9Final project demonstration, Q&A sessionDay 10
+
+AI ChatBotUCSI INTERNSHIP PROGRAM6. Security & Compliance Considerationsࠁউ߂ળࣻࢎ೦•Dual authentication for result enquiries성적조회시이중인증•Read-only database access읽기전용데이터베이스접근•Log anonymization로그익명화
+
+AI ChatBotUCSI INTERNSHIP PROGRAM7. FINAL Deliverables୭ઙ࢑୹ޛ•Python AI Chatbot prototype파이썬AI 챗봇프로토타입•Admin knowledge feeding system관리자지식투입시스템•Database-integrated demoDB 연동데모•Live or recorded demonstration실시간또는녹화데모•Technical documentation기술문서
+
+AI ChatBotUCSI INTERNSHIP PROGRAM7. Project Lead
+The ManagerZanThe SupervisorRex Voon
+
+Thank Youхࢎ೤׮פ
