@@ -169,12 +169,13 @@ _circuit_breaker = CircuitBreaker()
 _rate_limiter = TokenBucketRateLimiter()
 
 class AIEngine:
-    def __init__(self, model_name="gemma-3-27b-it"):
+    def __init__(self, model_name=None):
         """
         Initialize using the NEW Google Gen AI SDK (google-genai)
         """
-        self.raw_model_name = model_name
-        self.api_key = os.getenv("GOOGLE_API_KEY")
+        self.raw_model_name = model_name or os.getenv("GEMINI_MODEL", "gemma-3-27b-it")
+        # Prefer GEMINI_API_KEY, keep GOOGLE_API_KEY as legacy fallback.
+        self.api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         self.client = None
 
         if self.api_key:
@@ -191,7 +192,7 @@ class AIEngine:
                 print(f"Gemini Init Failed: {e}")
                 self.client = None
         else:
-            print("[ERROR] GOOGLE_API_KEY not found.")
+            print("[ERROR] GEMINI_API_KEY not found (legacy GOOGLE_API_KEY also checked).")
 
         # PROMPTS (Modified dynamically in process_message)
         
@@ -424,6 +425,54 @@ Format: JSON ONLY
         ]
         if any(p in q for p in self_patterns):
             return {"needs_context": True, "search_term": "self", "is_fast_path": True}
+
+        # 2.3 Capability / physical-action small-talk should stay out of RAG.
+        q_compact = re.sub(r"\s+", "", q)
+        en_capability_patterns = [
+            r"\b(can|could|do)\s+you\b",
+            r"\bare you able to\b",
+            r"\b(can|could|do)\s+you\s+(dance|sing|jump|run|swim|stand|crawl|roll|handstand)\b",
+        ]
+        ko_markers = [
+            "\ubb3c\uad6c\ub098\ubb34",
+            "\ud560 \uc218 \uc788",
+            "\uac00\ub2a5\ud574",
+            "\uac00\ub2a5\ud55c\uac00",
+            "\ud560\uc904 \uc54c\uc544",
+        ]
+        ko_action_stems = [
+            "\uae30\uc5b4", "\uad74\ub7ec", "\uad6c\ub974", "\ubb3c\uad6c\ub098\ubb34",
+            "\ucda4\ucdb0", "\ub178\ub798", "\uc810\ud504", "\ub2ec\ub824", "\ub6f0\uc5b4",
+            "\ud5e4\uc5c4", "\uc549\uc544", "\uc11c", "\ub3cc\uc544", "\ub0a0\uc544",
+        ]
+        ko_action_suffixes = [
+            "\ubd10", "\ubcf4", "\ud574", "\ud574\ubd10", "\ud574\ubcf4", "\ud574\uc918",
+            "\ud574\uc904\ub798", "\ud574\uc8fc\ub77c", "\ud574\ub77c", "\uac00\ub2a5\ud574",
+            "\ud560\uc218\uc788",
+        ]
+        ko_direct_patterns = [
+            r"(\uae30\uc5b4\s*\ubd10|\uad74\ub7ec\s*\ubd10|\uad6c\ub974\s*\ubd10)",
+            r"(\ubb3c\uad6c\ub098\ubb34\s*\uc11c\s*\ubd10|\ubb3c\uad6c\ub098\ubb34\uc11c\ubd10)",
+            r"(\ucda4\ucdb0\s*\ubd10|\ub178\ub798\ud574\s*\ubd10|\uc810\ud504\ud574\s*\ubd10|\ub2ec\ub824\s*\ubd10|\ub6f0\uc5b4\s*\ubd10|\ud5e4\uc5c4\uccd0\s*\ubd10)",
+            r"(\uae30\uc5b4\s*\uc918|\uad74\ub7ec\s*\uc918|\ucda4\ucdb0\s*\uc918|\ub178\ub798\ud574\s*\uc918)",
+        ]
+        is_capability_smalltalk = (
+            any(re.search(p, q) for p in en_capability_patterns)
+            or any(m in q for m in ko_markers)
+            or (
+                any(stem in q_compact for stem in ko_action_stems)
+                and any(sfx in q_compact for sfx in ko_action_suffixes)
+            )
+            or any(re.search(p, q) for p in ko_direct_patterns)
+        )
+        if is_capability_smalltalk:
+            return {
+                "text": "I cannot perform physical actions, but I can answer your questions clearly and quickly.",
+                "suggestions": ["Ask about UCSI programs", "Ask about campus facilities"],
+                "needs_context": False,
+                "search_term": None,
+                "is_fast_path": True
+            }
 
         # 2.5 General knowledge queries should stay out of RAG for better UX.
         if self._is_obvious_general_query(q):
@@ -688,9 +737,23 @@ Instructions:
                 raise last_error if last_error else Exception("API call failed")
             
             # 4. Parse JSON
-            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-            if json_match:
-                data = json.loads(json_match.group())
+            data = None
+            try:
+                parsed = json.loads(raw_text)
+                if isinstance(parsed, dict):
+                    data = parsed
+            except Exception:
+                decoder = json.JSONDecoder()
+                for start in (i for i, ch in enumerate(raw_text) if ch == "{"):
+                    try:
+                        parsed, _ = decoder.raw_decode(raw_text[start:])
+                        if isinstance(parsed, dict):
+                            data = parsed
+                            break
+                    except Exception:
+                        continue
+
+            if data is not None:
                 # Normalize output keys
                 return {
                     "response": data.get("text", "I'm thinking..."),

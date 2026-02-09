@@ -3,13 +3,13 @@
     "where is block a": {
       "answer": "Block A is in Kuala Lumpur.",
       "suggestions": [],
-      "hits": 4,
+      "hits": 5,
       "created": "2026-02-08T22:52:20.138955",
       "original_question": "Where is Block A?"
     }
   },
   "counts": {
-    "hello": 5,
+    "hello": 6,
     "안녕": 1,
     "학사 일정표를 보여주세요": 1,
     "휴학 관련 정보를 알고 싶습니다": 1,
@@ -43,13 +43,13 @@
     "sugar": 1,
     "who is adrian dong": 1,
     "about block a": 11,
-    "how much is the hostel fee": 34,
+    "how much is the hostel fee": 35,
     "the tuition fee for computer science": 31,
-    "where is block a": 44,
-    "what time does the library close": 44,
+    "where is block a": 45,
+    "what time does the library close": 45,
     "do you have a shuttle bus service": 33,
-    "the fee for the mars campus": 30,
-    "who is professor spiderman": 47,
+    "the fee for the mars campus": 31,
+    "who is professor spiderman": 48,
     "the tuition for jedi training": 31,
     "list all engineering majors": 24,
     "is there a gym on campus": 31,
@@ -64,9 +64,9 @@
     "where can i print documents": 41,
     "what are the entry requirements for diploma in it": 31,
     "where is the ufo landing pad": 31,
-    "about the moon campus tuition": 31,
+    "about the moon campus tuition": 32,
     "is there a prayer room": 28,
-    "is accommodation guaranteed for first year students": 34,
+    "is accommodation guaranteed for first year students": 35,
     "can i pay fees in installments": 34,
     "who is albert einstein": 24,
     "who painted the mona lisa": 24,
@@ -181,7 +181,13 @@
     "ucsi 대학의 시설에 대해": 1,
     "이름 뭐냐": 1,
     "그래": 1,
-    "ucsi 대학의 학비는 얼마인가요": 1
+    "ucsi 대학의 학비는 얼마인가요": 1,
+    "기어봐": 1,
+    "굴러봐": 1,
+    "about ucsi programs": 1,
+    "what are the fees for the electrical and electronics engineering program": 1,
+    "event schedule for intake": 1,
+    "기숙사 비용": 1
   },
-  "updated": "2026-02-09T01:14:19.852581"
+  "updated": "2026-02-09T09:33:04.262572"
 }

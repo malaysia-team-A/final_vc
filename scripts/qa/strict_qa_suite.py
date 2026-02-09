@@ -22,7 +22,7 @@ from typing import Dict, List, Tuple
 import requests
 
 
-API_BASE = os.getenv("QA_API_BASE", "http://localhost:5000")
+API_BASE = os.getenv("QA_API_BASE", "http://localhost:8000")
 CHAT_API = f"{API_BASE}/api/chat"
 LOGIN_API = f"{API_BASE}/api/login"
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))

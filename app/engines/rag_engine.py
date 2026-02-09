@@ -26,6 +26,10 @@ except ImportError:
 KNOWLEDGE_BASE_DIR = "data/knowledge_base"
 INDEX_FILE = "data/knowledge_base/faiss_index.bin"
 METADATA_FILE = "data/knowledge_base/faiss_metadata.pkl"
+DEFAULT_EMBEDDING_MODEL = os.getenv(
+    "RAG_EMBEDDING_MODEL",
+    "paraphrase-multilingual-MiniLM-L12-v2"
+)
 
 FICTIONAL_OR_INVALID_KEYWORDS = {
     "ufo", "jedi", "spiderman", "mars campus", "moon campus",
@@ -41,9 +45,11 @@ class RAGEngine:
         
         if self.enabled:
             try:
-                # Load Model (MiniLM is fast and light)
-                self.model = SentenceTransformer('all-MiniLM-L6-v2')
-                self.dimension = 384  # MiniLM dimension
+                # Multilingual MiniLM: better cross-lingual retrieval for KO/EN/ZH queries.
+                self.model_name = DEFAULT_EMBEDDING_MODEL
+                self.model = SentenceTransformer(self.model_name)
+                self.dimension = int(self.model.get_sentence_embedding_dimension() or 384)
+                self.metric_type = faiss.METRIC_INNER_PRODUCT
                 
                 # Load or Create Index
                 self._load_index()
@@ -57,6 +63,20 @@ class RAGEngine:
         if os.path.exists(INDEX_FILE) and os.path.exists(METADATA_FILE):
             try:
                 self.index = faiss.read_index(INDEX_FILE)
+                if getattr(self.index, "d", None) != self.dimension:
+                    print(
+                        f"[RAG] Index dimension mismatch: index={getattr(self.index, 'd', None)} "
+                        f"model={self.dimension}. Rebuilding index."
+                    )
+                    self._create_new_index()
+                    return
+                if getattr(self.index, "metric_type", None) != self.metric_type:
+                    print(
+                        f"[RAG] Index metric mismatch: index={getattr(self.index, 'metric_type', None)} "
+                        f"expected={self.metric_type}. Rebuilding index."
+                    )
+                    self._create_new_index()
+                    return
                 with open(METADATA_FILE, 'rb') as f:
                     self.metadata = pickle.load(f)
             except Exception as e:
@@ -67,7 +87,8 @@ class RAGEngine:
 
     def _create_new_index(self):
         """Create a new empty index"""
-        self.index = faiss.IndexFlatL2(self.dimension)
+        # Cosine similarity via normalized vectors + inner-product index.
+        self.index = faiss.IndexFlatIP(self.dimension)
         self.metadata = []
 
     def _save_index(self):
@@ -113,6 +134,88 @@ class RAGEngine:
             preferred.add("Staff")
 
         return preferred
+
+    def _expand_query_variants(self, query: str) -> List[str]:
+        """
+        Expand user query with cross-lingual/domain aliases so retrieval is not
+        blocked by exact keyword mismatch.
+        """
+        q = (query or "").strip()
+        if not q:
+            return []
+        ql = q.lower()
+
+        alias_map = {
+            "블록": ["block", "building"],
+            "위치": ["location", "where", "address"],
+            "비용": ["fee", "cost", "price", "rent", "deposit"],
+            "가격": ["price", "cost", "fee"],
+            "도서관": ["library"],
+            "기숙사": ["hostel", "accommodation", "dorm"],
+            "숙소": ["hostel", "accommodation"],
+            "학비": ["tuition", "fee", "fees"],
+            "등록금": ["tuition", "fee", "fees"],
+            "장학금": ["scholarship"],
+            "교수": ["professor", "lecturer", "staff"],
+            "학장": ["dean", "staff"],
+            "부총장": ["vice chancellor", "staff"],
+            "전공": ["major", "programme", "program"],
+            "학과": ["major", "programme", "program"],
+            "입학": ["intake", "admission"],
+            "일정": ["schedule", "calendar"],
+            "셔틀": ["shuttle", "bus"],
+            "버스": ["bus", "shuttle"],
+            "인쇄": ["print", "printer"],
+            "프린트": ["print", "printer"],
+            "식당": ["cafeteria", "dining"],
+            "카페테리아": ["cafeteria", "dining"],
+            "체육관": ["gym", "fitness"],
+            "수영장": ["pool"],
+            "세탁": ["laundry"],
+            "기도실": ["prayer room", "prayer"],
+            "hostel": ["accommodation", "dorm"],
+            "accommodation": ["hostel", "dorm"],
+            "tuition": ["fee", "fees"],
+            "fee": ["tuition", "cost", "price"],
+            "programme": ["program", "major", "course"],
+            "program": ["programme", "major", "course"],
+        }
+
+        alias_terms = []
+        for trigger, aliases in alias_map.items():
+            if trigger in ql:
+                alias_terms.extend(aliases)
+
+        variants = [q]
+        if alias_terms:
+            dedup_aliases = []
+            seen_alias = set()
+            for term in alias_terms:
+                tl = str(term).strip().lower()
+                if not tl or tl in seen_alias or tl in ql:
+                    continue
+                seen_alias.add(tl)
+                dedup_aliases.append(term)
+
+            if dedup_aliases:
+                variants.append(f"{q} {' '.join(dedup_aliases[:4])}")
+                variants.extend(dedup_aliases[:6])
+
+        # Preserve order and cap expansion budget.
+        out = []
+        seen = set()
+        for v in variants:
+            key = str(v).strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append(str(v).strip())
+            if len(out) >= 7:
+                break
+        return out
+
+    def _is_ascii_token(self, token: str) -> bool:
+        return re.fullmatch(r"[A-Za-z0-9_\-\s]+", str(token or "")) is not None
 
     def _source_to_label(self, source: str, text: str = "") -> Optional[str]:
         """Map source metadata to a normalized domain label."""
@@ -182,10 +285,11 @@ class RAGEngine:
             boosted = score * 0.55
         return min(boosted, 1.2)
 
-    def _expand_domain_scope(self, preferred_labels: Set[str]) -> Set[str]:
+    def _expand_domain_scope(self, preferred_labels: Set[str], query: str = "") -> Set[str]:
         """Expand preferred labels with near-neighbor related domains."""
         if not preferred_labels:
             return set()
+        q = (query or "").lower()
         related = {
             "HostelFAQ": {"Hostel"},
             "Hostel": {"HostelFAQ"},
@@ -197,6 +301,16 @@ class RAGEngine:
         }
         expanded = set(preferred_labels)
         for label in list(preferred_labels):
+            # Avoid broad Facility<->CampusBlocks expansion for specific facility asks.
+            if label == "Facility":
+                specific_facility_intent = any(
+                    k in q for k in [
+                        "library", "gym", "cafeteria", "pool", "laundry", "print", "printer", "prayer",
+                        "도서관", "체육관", "카페테리아", "수영장", "세탁", "인쇄", "프린트", "기도실"
+                    ]
+                )
+                if specific_facility_intent:
+                    continue
             expanded.update(related.get(label, set()))
         return expanded
 
@@ -236,7 +350,12 @@ class RAGEngine:
         Returns: [(text, score, source, label), ...]
         """
         q = (query or "").lower()
-        if not any(k in q for k in ["library", "gym", "cafeteria", "pool", "laundry", "prayer", "facility"]):
+        if not any(
+            k in q for k in [
+                "library", "gym", "cafeteria", "pool", "laundry", "prayer", "print", "printer", "facility",
+                "도서관", "체육관", "카페테리아", "식당", "수영장", "세탁", "기도실", "인쇄", "프린트", "시설"
+            ]
+        ):
             return []
         if "UCSI_FACILITY" not in db.list_collection_names():
             return []
@@ -248,6 +367,18 @@ class RAGEngine:
             "pool": "pool",
             "laundry": "laundry",
             "prayer": "prayer",
+            "print": "print",
+            "printer": "print",
+            "도서관": "library",
+            "체육관": "gym",
+            "카페테리아": "cafeteria",
+            "식당": "cafeteria",
+            "수영장": "pool",
+            "세탁": "laundry",
+            "기도실": "prayer",
+            "인쇄": "print",
+            "프린트": "print",
+            "시설": "facility",
         }
         matched_terms = [v for k, v in term_map.items() if k in q]
         if not matched_terms:
@@ -277,7 +408,7 @@ class RAGEngine:
             if doc.get("tags"):
                 details.append(f"tags: {doc.get('tags')}")
             text = f"[Facility] {name}: {', '.join(details)}"
-            score = 0.95 if "library" in q else 0.88
+            score = 0.95 if any(k in q for k in ["library", "도서관"]) else 0.88
             results.append((text, score, "MongoDB:Facility:direct", "Facility"))
         return results
 
@@ -300,11 +431,18 @@ class RAGEngine:
             ("professor", r"\bprofessor\b"),
             ("lecturer", r"\blecturer\b"),
             ("advisor", r"\badvisor\b"),
+            ("vice chancellor", r"부총장"),
+            ("dean", r"학장"),
+            ("head", r"학부장|학과장|책임자"),
+            ("professor", r"교수"),
+            ("lecturer", r"강사"),
+            ("advisor", r"지도교수|지도"),
         ]
         matched_role = None
         matched_regex = None
         for role_name, role_regex in role_patterns:
-            if role_name in q:
+            # Match by regex so localized queries (e.g., Korean role names) work.
+            if re.search(role_regex, q, re.IGNORECASE):
                 matched_role = role_name
                 matched_regex = role_regex
                 break
@@ -418,8 +556,10 @@ class RAGEngine:
             if not chunks: return False
 
             # Embed and Add to FAISS
-            embeddings = self.model.encode(chunks)
-            self.index.add(np.array(embeddings).astype('float32'))
+            embeddings = np.array(self.model.encode(chunks)).astype('float32')
+            if getattr(self.index, "metric_type", None) == faiss.METRIC_INNER_PRODUCT:
+                faiss.normalize_L2(embeddings)
+            self.index.add(embeddings)
             
             # Update Metadata
             for chunk in chunks:
@@ -557,8 +697,10 @@ class RAGEngine:
 
                 # Rebuild FAISS from scratch so Mongo docs stay idempotent across startups.
                 self._create_new_index()
-                embeddings = self.model.encode(rebuilt_texts)
-                self.index.add(np.array(embeddings).astype('float32'))
+                embeddings = np.array(self.model.encode(rebuilt_texts)).astype('float32')
+                if getattr(self.index, "metric_type", None) == faiss.METRIC_INNER_PRODUCT:
+                    faiss.normalize_L2(embeddings)
+                self.index.add(embeddings)
                 self.metadata = rebuilt_metadata
 
                 # Save persistently
@@ -587,9 +729,12 @@ class RAGEngine:
         CONFIDENCE_THRESHOLD = 0.35  # Below this = NO_DATA_FOUND
         results_with_scores = []  # [(text, score, source), ...]
         sources_matched = []
+        query_variants = self._expand_query_variants(query)
+        if not query_variants:
+            query_variants = [query]
         effective_preferred = set(preferred_labels or [])
         effective_preferred.update(self._infer_preferred_labels(query))
-        scoped_labels = self._expand_domain_scope(effective_preferred)
+        scoped_labels = self._expand_domain_scope(effective_preferred, query)
         route_specific = self._is_route_specific_query(query)
 
         if self._is_forced_no_data_query(query):
@@ -604,40 +749,66 @@ class RAGEngine:
         try:
             from .db_engine import db_engine
             if db_engine.connected:
-                learned_ans = db_engine.search_learned_response(query)
-                if learned_ans:
-                    results_with_scores.append((
-                        f"[Verified Answer]\n{learned_ans}",
-                        self._apply_domain_boost(1.0, "LearnedQA", effective_preferred),
-                        "LearnedQA"
-                    ))
-                    sources_matched.append("LearnedQA")
+                for qv in query_variants[:3]:
+                    learned_ans = db_engine.search_learned_response(qv)
+                    if learned_ans:
+                        results_with_scores.append((
+                            f"[Verified Answer]\n{learned_ans}",
+                            self._apply_domain_boost(1.0, "LearnedQA", effective_preferred),
+                            "LearnedQA"
+                        ))
+                        sources_matched.append("LearnedQA")
+                        break
         except Exception as e:
             print(f"LearnedQA Search Error: {e}")
 
         # 1. FAISS Document Search (score = 1/(1+distance))
         if self.enabled and self.index is not None and self.index.ntotal > 0:
             try:
-                query_vector = self.model.encode([query])
-                D, I = self.index.search(np.array(query_vector).astype('float32'), k=n_results)
-                
-                for i, idx in enumerate(I[0]):
-                    if idx != -1 and idx < len(self.metadata):
-                        distance = D[0][i]
-                        # Convert L2 distance to similarity score (0~1)
-                        score = 1.0 / (1.0 + distance)
-                        
-                        # Only include if score is meaningful (> 0.3)
-                        if score > 0.3:
+                vector_queries = query_variants[:4]
+                query_vectors = np.array(self.model.encode(vector_queries)).astype('float32')
+                if getattr(self.index, "metric_type", None) == faiss.METRIC_INNER_PRODUCT:
+                    faiss.normalize_L2(query_vectors)
+                faiss_k = max(5, n_results)
+                D_all, I_all = self.index.search(query_vectors, k=faiss_k)
+
+                for qi, qv in enumerate(vector_queries):
+                    qv_l = str(qv or "").lower()
+                    variant_bonus = 1.0 if qi == 0 else 0.96
+                    for i, idx in enumerate(I_all[qi]):
+                        if idx == -1 or idx >= len(self.metadata):
+                            continue
+                        distance = D_all[qi][i]
+                        metric = getattr(self.index, "metric_type", None)
+                        if metric == faiss.METRIC_INNER_PRODUCT:
+                            # Map cosine similarity (-1~1) to 0~1.
+                            score = ((float(distance) + 1.0) / 2.0) * variant_bonus
+                        else:
+                            # Legacy fallback for L2 indices.
+                            score = (1.0 / (1.0 + float(distance))) * variant_bonus
+
+                        text_payload = self.metadata[idx].get("text", "")
+                        if not text_payload:
+                            continue
+
+                        # Small lexical overlap bonus to reward close paraphrases.
+                        q_tokens = set(re.findall(r"[a-z0-9가-힣]{2,}", qv_l))
+                        t_tokens = set(re.findall(r"[a-z0-9가-힣]{2,}", str(text_payload).lower()))
+                        if q_tokens and t_tokens:
+                            overlap = len(q_tokens.intersection(t_tokens)) / max(1, min(len(q_tokens), len(t_tokens)))
+                            score += min(0.12, overlap * 0.12)
+
+                        # Keep slightly lower floor to allow semantic matches that are not exact-keyword hits.
+                        if score > 0.26:
                             source_name = self.metadata[idx].get('source', 'doc')
-                            label = self._source_to_label(source_name, self.metadata[idx].get("text", ""))
+                            label = self._source_to_label(source_name, text_payload)
                             if scoped_labels and label and label not in scoped_labels:
                                 continue
-                            if route_specific and label in {"Schedule", "Facility"} and not self._is_route_relevant_text(self.metadata[idx].get("text", "")):
+                            if route_specific and label in {"Schedule", "Facility"} and not self._is_route_relevant_text(text_payload):
                                 continue
                             boosted_score = self._apply_domain_boost(score, label, effective_preferred)
                             results_with_scores.append((
-                                f"[Document] {self.metadata[idx]['text']}",
+                                f"[Document] {text_payload}",
                                 boosted_score,
                                 f"FAISS:{source_name}"
                             ))
@@ -651,14 +822,15 @@ class RAGEngine:
             from .db_engine import db_engine
             if db_engine.connected and db_engine.db is not None:
                 direct_results = []
-                try:
-                    direct_results.extend(self._search_facility_direct(db_engine.db, query))
-                except Exception as e:
-                    print(f"Direct facility search error: {e}")
-                try:
-                    direct_results.extend(self._search_staff_role_direct(db_engine.db, query))
-                except Exception as e:
-                    print(f"Direct staff role search error: {e}")
+                for qv in query_variants[:4]:
+                    try:
+                        direct_results.extend(self._search_facility_direct(db_engine.db, qv))
+                    except Exception as e:
+                        print(f"Direct facility search error: {e}")
+                    try:
+                        direct_results.extend(self._search_staff_role_direct(db_engine.db, qv))
+                    except Exception as e:
+                        print(f"Direct staff role search error: {e}")
 
                 for text, score, source, label in direct_results:
                     if scoped_labels and label and label not in scoped_labels:
@@ -670,7 +842,13 @@ class RAGEngine:
                     if source not in sources_matched:
                         sources_matched.append(source)
                 
-                def smart_search_collection(coll_name: str, text_fields: list, label: str, limit: int = 3) -> list:
+                def smart_search_collection(
+                    coll_name: str,
+                    text_fields: list,
+                    label: str,
+                    queries: List[str],
+                    limit: int = 3
+                ) -> list:
                     """
                     Enhanced search with multiple strategies:
                     - Text Search: MongoDB $text with scoring
@@ -740,84 +918,94 @@ class RAGEngine:
                         
                         return result
 
-                    keywords = extract_keywords(query)
                     generic_keywords = {
                         "campus", "fee", "fees", "tuition", "program", "programme", "course",
                         "information", "details", "what", "where", "when", "who", "how",
                         "tell", "about", "is", "are", "for", "with", "service"
                     }
 
-                    # A. Text Search (with score)
-                    try:
-                        cursor = coll.find(
-                            {"$text": {"$search": query}}, 
-                            {"score": {"$meta": "textScore"}, "_id": 0}
-                        ).sort([("score", {"$meta": "textScore"})]).limit(limit)
-                        
-                        for doc in cursor:
-                            text_score = doc.get('score', 0)
-                            normalized_score = min(text_score / 3.0, 1.0)
-                            
-                            if normalized_score >= 0.25:  # Lowered threshold
-                                s_doc = str(doc)
-                                if s_doc not in seen_ids:
-                                    seen_ids.add(s_doc)
-                                    found_items.append((doc, normalized_score, "text"))
-                    except Exception as e:
-                        pass  # Text index might not exist
+                    for qx in (queries or [])[:4]:
+                        if len(found_items) >= limit:
+                            break
+                        keywords = extract_keywords(qx)
 
-                    # B. Keyword-based Regex Search (more precise)
-                    if len(found_items) < limit and keywords:
+                        # A. Text Search (with score)
                         try:
-                            for keyword in keywords[:5]:  # Top 5 keywords
-                                if len(keyword) < 2:
+                            cursor = coll.find(
+                                {"$text": {"$search": qx}},
+                                {"score": {"$meta": "textScore"}, "_id": 0}
+                            ).sort([("score", {"$meta": "textScore"})]).limit(limit)
+
+                            for doc in cursor:
+                                text_score = doc.get('score', 0)
+                                normalized_score = min(text_score / 3.0, 1.0)
+
+                                if normalized_score >= 0.25:  # Lowered threshold
+                                    s_doc = str(doc)
+                                    if s_doc not in seen_ids:
+                                        seen_ids.add(s_doc)
+                                        found_items.append((doc, normalized_score, "text"))
+                        except Exception:
+                            pass  # Text index might not exist
+
+                        # B. Keyword-based Regex Search (more precise)
+                        if len(found_items) < limit and keywords:
+                            try:
+                                for keyword in keywords[:8]:
+                                    token = str(keyword or "").strip()
+                                    if len(token) < 2:
+                                        continue
+                                    is_generic = token.lower() in generic_keywords
+
+                                    if self._is_ascii_token(token):
+                                        pattern = rf"\b{re.escape(token)}\b"
+                                    else:
+                                        # For CJK/non-latin terms, word boundaries are unreliable.
+                                        pattern = re.escape(token)
+
+                                    regex_conditions = []
+                                    for field in text_fields:
+                                        regex_conditions.append({
+                                            field: {"$regex": pattern, "$options": "i"}
+                                        })
+
+                                    if regex_conditions:
+                                        cursor = coll.find({"$or": regex_conditions}, {"_id": 0}).limit(limit)
+                                        for doc in cursor:
+                                            s_doc = str(doc)
+                                            if s_doc not in seen_ids:
+                                                seen_ids.add(s_doc)
+                                                # Penalize generic keywords to reduce false positives.
+                                                match_score = 0.65 if not is_generic else 0.30
+                                                found_items.append((doc, match_score, f"keyword:{token}"))
+                            except Exception:
+                                pass
+
+                        # C. Fuzzy Regex Search (fallback)
+                        if len(found_items) < limit:
+                            try:
+                                # Use only specific tokens for fallback regex to avoid broad false matches.
+                                specific_tokens = [
+                                    str(k) for k in keywords
+                                    if len(str(k)) >= 2 and str(k).lower() not in generic_keywords
+                                ]
+                                cleaned_q = re.escape(specific_tokens[0]) if specific_tokens else ""
+                                if not cleaned_q:
                                     continue
-                                is_generic = str(keyword).lower() in generic_keywords
-                                    
                                 regex_conditions = []
+
                                 for field in text_fields:
-                                    # Case-insensitive, word boundary match
-                                    regex_conditions.append({
-                                        field: {"$regex": f"\\b{re.escape(keyword)}\\b", "$options": "i"}
-                                    })
-                                
+                                    regex_conditions.append({field: {"$regex": cleaned_q, "$options": "i"}})
+
                                 if regex_conditions:
                                     cursor = coll.find({"$or": regex_conditions}, {"_id": 0}).limit(limit)
                                     for doc in cursor:
                                         s_doc = str(doc)
                                         if s_doc not in seen_ids:
                                             seen_ids.add(s_doc)
-                                            # Penalize generic keywords to reduce false positives.
-                                            match_score = 0.65 if not is_generic else 0.30
-                                            found_items.append((doc, match_score, f"keyword:{keyword}"))
-                        except Exception as e:
-                            pass
-
-                    # C. Fuzzy Regex Search (fallback)
-                    if len(found_items) < limit:
-                        try:
-                            # Use only specific tokens for fallback regex to avoid broad false matches.
-                            specific_tokens = [
-                                str(k) for k in keywords
-                                if len(str(k)) >= 4 and str(k).lower() not in generic_keywords
-                            ]
-                            cleaned_q = re.escape(specific_tokens[0]) if specific_tokens else ""
-                            if not cleaned_q:
-                                return found_items
-                            regex_conditions = []
-                            
-                            for field in text_fields:
-                                regex_conditions.append({field: {"$regex": cleaned_q, "$options": "i"}})
-                            
-                            if regex_conditions:
-                                cursor = coll.find({"$or": regex_conditions}, {"_id": 0}).limit(limit)
-                                for doc in cursor:
-                                    s_doc = str(doc)
-                                    if s_doc not in seen_ids:
-                                        seen_ids.add(s_doc)
-                                        found_items.append((doc, 0.32, "regex"))
-                        except Exception as e:
-                            pass
+                                            found_items.append((doc, 0.32, "regex"))
+                            except Exception:
+                                pass
 
                     return found_items
 
@@ -838,7 +1026,12 @@ class RAGEngine:
                 # Execute Universal Search
                 for coll_name, fields, label in domains:
                     try:
-                        domain_results = smart_search_collection(coll_name, fields, label)
+                        domain_results = smart_search_collection(
+                            coll_name,
+                            fields,
+                            label,
+                            query_variants,
+                        )
                         
                         for doc, score, match_type in domain_results:
                             # Format document
@@ -890,6 +1083,16 @@ class RAGEngine:
         except Exception as e:
             print(f"MongoDB RAG Search Error: {e}")
         
+        if results_with_scores:
+            # Keep highest score per (text, source) to avoid duplicate hits from query variants.
+            deduped = {}
+            for text, score, source in results_with_scores:
+                key = (text, source)
+                prev = deduped.get(key)
+                if prev is None or score > prev[1]:
+                    deduped[key] = (text, score, source)
+            results_with_scores = list(deduped.values())
+
         # 3. Calculate Final Confidence and Build Context
         if not results_with_scores:
             return {

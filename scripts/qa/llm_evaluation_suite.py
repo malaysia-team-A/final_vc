@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import argparse
 
 # Configuration
-API_URL = "http://localhost:5000/api/chat"
+API_URL = os.getenv("QA_API_URL", "http://localhost:8000/api/chat")
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 TEST_CASES_DIR = os.path.join(PROJECT_ROOT, "test_cases")
 RESULTS_DIR = os.path.join(PROJECT_ROOT, "data", "reports")

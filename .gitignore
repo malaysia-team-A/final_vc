@@ -6,6 +6,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 .env
 
 # IDE
@@ -17,23 +18,23 @@ venv/
 # Logs
 *.log
 logs/
+server_current.err
+server_current.out
 
 # OS
 Thumbs.db
 .DS_Store
 
-# Screenshots
-스크린샷*.png
-
-# Test files (if any remain)
-test_*.py
-*_test.py
-
 # Temporary files
 *.tmp
 *.temp
 
-# Generated QA reports / debug artifacts
+# Local diagnostic outputs
+verify.txt
+python_info.txt
+python_info_error.txt
+
+# Generated QA/debug artifacts
 data/reports/
 data/evaluation_report_*.csv
 data/evaluation_report_*.html
@@ -41,6 +42,7 @@ data/e2e_rag_regression_*.csv
 data/rag_domain_eval_*.csv
 data/strict_qa_report_*.csv
 data/test_results_*.csv
+data/live_e2e_*.json
+data/live_wide_coverage_*.json
+data/vectorstore_benchmark_*.json
 stress_test_report.csv
-server_current.err
-server_current.out

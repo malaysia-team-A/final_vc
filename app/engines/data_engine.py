@@ -2,9 +2,7 @@
 Data Engine - Student Data Access Layer
 Now uses MongoDB instead of Excel
 """
-import pandas as pd
 from .db_engine import db_engine
-import json
 import re
 
 class DataEngine:
@@ -34,34 +32,26 @@ class DataEngine:
         """
         if not self.db.connected:
             return (False, None, "Database connection error")
-        
-        print(f"DEBUG: Verifying student_number='{student_number}', name='{name}'")
-        
+
         # Get student by student number
         student = self.db.get_student_by_number(student_number)
         
         if not student:
-            print(f"DEBUG: Student number '{student_number}' not found in DB")
             return (False, None, "Student number not found")
         
         # Verify name matches (case-insensitive)
         # Check all possible variations of field names
         student_name = student.get("STUDENT_NAME") or student.get("name") or student.get("Name") or student.get("FullName")
-        
-        print(f"DEBUG: Found student record: {student}")
-        
+
         if not student_name:
-            print("DEBUG: Student record found but no name field found")
             return (False, None, "Student record corrupted (no name field)")
 
         student_name_str = str(student_name).strip().lower()
         input_name = str(name).strip().lower()
         
         if student_name_str == input_name:
-            print("DEBUG: Verification successful")
             return (True, student, "Verification successful")
         else:
-            print(f"DEBUG: Name mismatch. DB='{student_name_str}', Input='{input_name}'")
             return (False, None, "Name does not match student number")
 
     def get_student_info(self, student_number):
