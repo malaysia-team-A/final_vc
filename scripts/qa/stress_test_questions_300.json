@@ -1,0 +1,74 @@
+[
+    {
+        "type": "RAG",
+        "query": "Where is Block A located?"
+    },
+    {
+        "type": "RAG",
+        "query": "Tell me about the library facilities."
+    },
+    {
+        "type": "RAG",
+        "query": "What are the hostel fees for single room?"
+    },
+    {
+        "type": "RAG",
+        "query": "Who is the head of the IT faculty?"
+    },
+    {
+        "type": "General",
+        "query": "What is Python?"
+    },
+    {
+        "type": "General",
+        "query": "How do I cook pasta?"
+    },
+    {
+        "type": "Personal",
+        "query": "Check my grades"
+    },
+    {
+        "type": "Personal",
+        "query": "What is my GPA?"
+    },
+    {
+        "type": "Personal",
+        "query": "My student ID?"
+    },
+    {
+        "type": "RAG",
+        "query": "Is there a gym strictly for students?"
+    },
+    {
+        "type": "RAG",
+        "query": "Bus schedule for Route B"
+    },
+    {
+        "type": "Mixed",
+        "query": "Tell me about Block A and my grades"
+    },
+    {
+        "type": "Edge",
+        "query": "qwer asdf zxcv"
+    },
+    {
+        "type": "Korean",
+        "query": "기숙사 비용 얼마야?"
+    },
+    {
+        "type": "Korean",
+        "query": "도서관 위치 알려줘"
+    },
+    {
+        "type": "Korean",
+        "query": "내 성적 확인해줘"
+    },
+    {
+        "type": "Hallucination_Trap",
+        "query": "What is the fee for the non-existent Mars campus?"
+    },
+    {
+        "type": "Hallucination_Trap",
+        "query": "Who is Professor Gandalf?"
+    }
+]

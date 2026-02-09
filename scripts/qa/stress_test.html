@@ -1,0 +1,112 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chatbot Stress Test</title>
+    <style>
+        body { font-family: monospace; }
+        #log { width: 100%; height: 500px; white-space: pre; background: #eee; }
+    </style>
+</head>
+<body>
+    <h1>Stress Test Runner</h1>
+    <button id="startBtn" onclick="runTest()">Start Test</button>
+    <div id="status">Ready</div>
+    <textarea id="log"></textarea>
+    <script>
+        const API_URL = "/api/chat";
+        
+        // 1. Generate Questions
+        const ragSeeds = [
+            "Diploma in Opticianry", "Foundation in Science", "Bachelor in Formulation Science", 
+            "Bachelor of Pharmacy", "Diploma in Management", "Music Degree", "Engineering",
+            "Doctor of Philosophy", "Master of Architecture", "Nursing",
+            "Library", "Swimming Pool", "Gym", "Cafeteria", "Block A", "Auditorium", "Lab",
+            "Hostel fees", "Accomodation", "Bus schedule"
+        ];
+        
+        const genSeeds = [
+             "Sky", "Ocean", "History", "Python", "Pasta", "France", "Life", "Weather", "Einstein", "Movies"
+        ];
+        
+        const questions = [];
+        
+        // Generate 100 RAG
+        for(let i=0; i<100; i++) {
+            let topic = ragSeeds[i % ragSeeds.length];
+            questions.push({type: "RAG", query: `Tell me about ${topic}`});
+        }
+        
+        // Generate 100 General
+        for(let i=0; i<100; i++) {
+            let topic = genSeeds[i % genSeeds.length];
+            questions.push({type: "GEN", query: `What is ${topic} ${i}?`});
+        }
+        
+        async function runTest() {
+            const btn = document.getElementById("startBtn");
+            const log = document.getElementById("log");
+            const status = document.getElementById("status");
+            btn.disabled = true;
+            status.innerText = "Running...";
+            
+            let results = [];
+            let processed = 0;
+            
+            // Allow concurrency of 5
+            const limit = 5;
+            let active = 0;
+            let index = 0;
+            
+            const processNext = async () => {
+                if (index >= questions.length) return;
+                
+                const qIdx = index++;
+                const q = questions[qIdx];
+                const start = Date.now();
+                
+                try {
+                    const res = await fetch(API_URL, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({message: q.query})
+                    });
+                    const json = await res.json();
+                    const latency = (Date.now() - start) / 1000;
+                    
+                    let snippet = typeof json.response === 'string' ? json.response.substring(0, 50) : JSON.stringify(json).substring(0, 50);
+                    
+                    results.push({id: qIdx, ...q, status: res.status, latency, snippet: snippet.replace(/\n/g, "")});
+                    
+                } catch (e) {
+                    const latency = (Date.now() - start) / 1000;
+                    results.push({id: qIdx, ...q, status: "ERROR", latency, snippet: e.message});
+                }
+                
+                processed++;
+                status.innerText = `Processed ${processed}/${questions.length}`;
+                log.value = JSON.stringify(results, null, 2);
+                
+                await processNext();
+            };
+            
+            const workers = [];
+            for(let i=0; i<limit; i++) workers.push(processNext());
+            await Promise.all(workers);
+            
+            status.innerText = "DONE";
+            // Write Summary at top of log
+            const avgLat = results.reduce((acc, curr) => acc + curr.latency, 0) / results.length;
+            const errors = results.filter(r => r.status !== 200).length;
+            
+            const summary = {
+                total: results.length,
+                avgLatency: avgLat,
+                errorCount: errors,
+                results: results
+            };
+             log.value = JSON.stringify(summary, null, 2);
+        }
+    </script>
+</body>
+</html>

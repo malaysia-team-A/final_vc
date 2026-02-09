@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UCSI Chatbot Admin</title>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --card-border: 1px solid rgba(255, 255, 255, 0.1);
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --accent: #3b82f6;
+            --success: #10b981;
+            --danger: #ef4444;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: var(--card-border);
+        }
+
+        h1,
+        h2,
+        h3 {
+            margin: 0;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: var(--card-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h3 {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .text-accent {
+            color: var(--accent);
+        }
+
+        .text-success {
+            color: var(--success);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 1rem;
+            border-bottom: var(--card-border);
+        }
+
+        th {
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .upload-area {
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .upload-area:hover,
+        .upload-area.dragover {
+            border-color: var(--accent);
+            background: rgba(59, 130, 246, 0.1);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>🤖 UCSI Chatbot Admin</h1>
+                <p style="color: var(--text-secondary);">System Monitoring & Knowledge Management</p>
+            </div>
+            <button class="btn" onclick="fetchStats()">Refresh Data</button>
+        </header>
+
+        <!-- Stats Row -->
+        <div class="grid">
+            <div class="card">
+                <h3>Total Feedbacks</h3>
+                <div class="stat-value" id="totalFeedbacks">-</div>
+            </div>
+            <div class="card">
+                <h3>Satisfaction Rate</h3>
+                <div class="stat-value text-success" id="satisfactionRate">-%</div>
+            </div>
+            <div class="card">
+                <h3>Unresolved Issues</h3>
+                <div class="stat-value text-accent" id="unansweredCount">-</div>
+            </div>
+        </div>
+
+        <div class="grid" style="grid-template-columns: 2fr 1fr;">
+            <!-- Unanswered Questions -->
+            <div class="card">
+                <h3>Inbox: Unanswered Questions</h3>
+                <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:1rem;">Questions waiting for
+                    manual answers or knowledge base updates.</p>
+                <div style="overflow-x:auto;">
+                    <table id="unansweredTable">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Question</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="3">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Upload Section -->
+            <div class="card">
+                <h3>Knowledge Base Upload</h3>
+                <div class="upload-area" id="dropZone">
+                    <p>Drag & Drop files here<br>or click to select</p>
+                    <input type="file" id="fileInput" style="display:none" multiple>
+                </div>
+                <div id="uploadStatus" style="margin-top:1rem; font-size:0.9rem;"></div>
+            </div>
+        </div>
+
+        <!-- Recent Feedback -->
+        <div class="card">
+            <h3>Recent User Feedbacks</h3>
+            <table id="feedbackTable">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>User Query</th>
+                        <th>Rating</th>
+                        <th>Comment</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="4">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // API Base
+        const API = '/api/admin';
+
+        // Load Stats
+        async function fetchStats() {
+            try {
+                const res = await fetch(`${API}/stats`);
+                const data = await res.json();
+
+                document.getElementById('totalFeedbacks').innerText = data.total_feedbacks;
+                document.getElementById('satisfactionRate').innerText = data.satisfaction_rate + '%';
+                document.getElementById('unansweredCount').innerText = data.unanswered_count;
+
+                // Render Unanswered
+                const uTable = document.getElementById('unansweredTable').getElementsByTagName('tbody')[0];
+                uTable.innerHTML = '';
+                if (data.unanswered_logs && data.unanswered_logs.length > 0) {
+                    data.unanswered_logs.forEach(item => {
+                        const row = uTable.insertRow();
+                        row.innerHTML = `
+                            <td style="color:#94a3b8">${new Date(item.timestamp).toLocaleDateString()}</td>
+                            <td style="font-weight:600">${item.question}</td>
+                            <td><span style="background:rgba(239, 68, 68, 0.2); color:#fca5a5; padding:2px 6px; borderRadius:4px; fontSize:0.8em">${item.reason}</span></td>
+                        `;
+                    });
+                } else {
+                    uTable.innerHTML = '<tr><td colspan="3" style="text-align:center">No unresolved questions. Good job!</td></tr>';
+                }
+
+                // Render Feedbacks
+                const fTable = document.getElementById('feedbackTable').getElementsByTagName('tbody')[0];
+                fTable.innerHTML = '';
+                if (data.recent_feedbacks && data.recent_feedbacks.length > 0) {
+                    data.recent_feedbacks.forEach(item => {
+                        const row = fTable.insertRow();
+                        const color = item.rating === 'positive' ? 'var(--success)' : 'var(--danger)';
+                        row.innerHTML = `
+                            <td style="color:#94a3b8">${new Date(item.timestamp).toLocaleTimeString()}</td>
+                            <td title="${item.user_message}">${item.user_message.substring(0, 50)}...</td>
+                            <td style="color:${color}; font-weight:bold">${item.rating === 'positive' ? '👍' : '👎'}</td>
+                            <td>${item.comment || '-'}</td>
+                        `;
+                    });
+                } else {
+                    fTable.innerHTML = '<tr><td colspan="4" style="text-align:center">No feedback yet.</td></tr>';
+                }
+
+            } catch (e) {
+                console.error("Stats Error", e);
+            }
+        }
+
+        // Upload Logic
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.onclick = () => fileInput.click();
+
+        dropZone.ondragover = (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        };
+        dropZone.ondragleave = () => dropZone.classList.remove('dragover');
+
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        };
+
+        fileInput.onchange = () => handleFiles(fileInput.files);
+
+        async function handleFiles(files) {
+            if (files.length === 0) return;
+
+            const formData = new FormData();
+            formData.append('file', files[0]); // Handle single file for now
+
+            const status = document.getElementById('uploadStatus');
+            status.innerHTML = '<span style="color:var(--accent)">Uploading...</span>';
+
+            try {
+                const res = await fetch(`${API}/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    status.innerHTML = '<span style="color:var(--success)">Upload Successful! RAG Updated.</span>';
+                } else {
+                    status.innerHTML = `<span style="color:var(--danger)">Error: ${result.message}</span>`;
+                }
+            } catch (e) {
+                status.innerHTML = '<span style="color:var(--danger)">Upload Failed.</span>';
+            }
+        }
+
+        // Initial Load
+        fetchStats();
+        setInterval(fetchStats, 30000); // Auto refresh every 30s
+    </script>
+</body>
+
+</html>

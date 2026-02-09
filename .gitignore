@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+server_current.err
+server_current.out
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+
+# Local diagnostic outputs
+verify.txt
+python_info.txt
+python_info_error.txt
+
+# Generated QA/debug artifacts
+data/reports/
+data/evaluation_report_*.csv
+data/evaluation_report_*.html
+data/e2e_rag_regression_*.csv
+data/rag_domain_eval_*.csv
+data/strict_qa_report_*.csv
+data/test_results_*.csv
+data/live_e2e_*.json
+data/live_wide_coverage_*.json
+data/vectorstore_benchmark_*.json
+stress_test_report.csv

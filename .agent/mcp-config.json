@@ -1,0 +1,12 @@
+{
+    "mcpServers": {
+        "mongodb": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@mongodb-js/mcp-server",
+                "mongodb+srv://qnrhd99_db_user:wj7JZUImwedq0x0E@teama.k58xklb.mongodb.net/ucsi_chatbot?retryWrites=true&w=majority"
+            ]
+        }
+    }
+}

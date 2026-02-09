@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>University Landing Page - Cleaned</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Tailwind CSS (Keep inline for simplicity or move to build step later) -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#a31e22", // University Red
+                        secondary: "#f39200", // QS Gold
+                        "background-light": "#ffffff",
+                        "background-dark": "#0f172a",
+                    },
+                    fontFamily: {
+                        display: ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.375rem",
+                    },
+                },
+            },
+        };
+    </script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/styles.css" />
+</head>
+
+<body
+    class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 transition-colors duration-200">
+    <header class="border-b border-gray-100 dark:border-slate-800">
+        <!-- Header Content Omitted for Brevity (Unchanged) -->
+        <div class="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
+            <div class="flex items-center space-x-6">
+                <div class="flex items-center">
+                    <span class="text-2xl font-extrabold text-primary flex items-center">
+                        <span class="material-icons mr-1 text-3xl">school</span>
+                        UCSI University
+                    </span>
+                </div>
+                <div class="hidden md:flex items-center space-x-2 border-l pl-6 border-gray-200 dark:border-slate-700">
+                    <div class="bg-secondary p-1 rounded">
+                        <span class="text-[10px] font-bold text-white uppercase leading-none block">QS World's</span>
+                        <span class="text-sm font-black text-white leading-none">TOP 1%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center space-x-1">
+                <nav class="hidden lg:flex items-center space-x-1 mr-4">
+                    <button
+                        class="p-2 text-xs font-semibold uppercase hover:text-primary transition-colors flex flex-col items-center">
+                        <span class="material-icons text-lg">person</span>
+                        <span>Resources</span>
+                    </button>
+                </nav>
+                <a class="bg-primary hover:bg-red-800 text-white px-6 py-2.5 rounded font-bold transition-all text-sm"
+                    href="#">APPLY NOW</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="relative hero-gradient overflow-hidden">
+        <div
+            class="max-w-7xl mx-auto px-4 py-16 lg:py-24 flex flex-col lg:flex-row items-center justify-between relative">
+            <!-- Hero Content -->
+            <div class="z-10 text-white w-full lg:w-3/5 space-y-8">
+                <div class="space-y-2">
+                    <h1 class="text-5xl lg:text-7xl font-extrabold uppercase tracking-tighter drop-shadow-lg">
+                        Apply Directly <br /> With Us
+                    </h1>
+                </div>
+            </div>
+            <!-- QR Section -->
+            <div class="z-10 mt-12 lg:mt-0 flex flex-col items-center space-y-8">
+                <a class="group flex items-center justify-center border-4 border-white rounded-full py-4 px-12 transition-all hover:bg-white hover:text-primary"
+                    href="#">
+                    <span
+                        class="text-3xl font-black uppercase tracking-widest text-white group-hover:text-primary">Apply
+                        Now</span>
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <!-- FLOATING CHAT WIDGET CONTAINER -->
+    <div class="fixed bottom-6 right-6 z-50 flex flex-col items-end font-display">
+
+        <!-- Chatbot Window -->
+        <div id="chatbot-window"
+            class="hidden w-[360px] h-[600px] mb-4 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-gray-100 dark:border-slate-700 transform transition-all origin-bottom-right ring-1 ring-black/5">
+
+            <!-- Classic Header -->
+            <div class="bg-primary p-4 flex items-center justify-between text-white shrink-0 shadow-sm z-20">
+                <div class="flex items-center gap-3">
+                    <div class="relative group">
+                        <div
+                            class="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-white border-2 border-white/20">
+                            <span class="material-icons text-xl">smart_toy</span>
+                        </div>
+                        <div
+                            class="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-primary rounded-full">
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-base text-white leading-tight">UCSI Assistant</h3>
+                        <div class="flex items-center gap-1.5 opacity-80">
+                            <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                            <span class="text-[11px] font-medium">Online</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Header Controls -->
+                <div class="flex items-center gap-1">
+                    <button id="header-login-btn" onclick="showVerifyScreen()"
+                        class="text-[10px] font-bold uppercase tracking-wider bg-black/20 hover:bg-black/30 text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 border border-white/10">
+                        <span class="material-icons text-[12px]">login</span>
+                        <span id="login-btn-text">AUTH</span>
+                    </button>
+                    <button onclick="toggleChatbot()"
+                        class="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full transition-colors">
+                        <span class="material-icons text-white">expand_more</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Verification Screen Overlay (Solid Background for Clarity) -->
+            <div id="verify-screen"
+                class="hidden absolute inset-0 bg-white dark:bg-slate-900 z-50 flex flex-col items-center justify-center p-8 space-y-8 animate-fade-in-up">
+                <div class="text-center space-y-2">
+                    <div
+                        class="w-16 h-16 bg-red-50 text-primary rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                        <span class="material-icons text-3xl">badge</span>
+                    </div>
+                    <h3 class="text-2xl font-bold text-slate-800 dark:text-white">Student Login</h3>
+                    <p class="text-xs text-slate-500">Access grades & personal info.</p>
+                </div>
+                <div class="w-full space-y-3">
+                    <input id="verify-student-number" type="text" placeholder="Student ID"
+                        class="w-full px-5 py-3.5 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-primary/20 outline-none text-sm transition-all focus:bg-white text-center font-bold tracking-widest" />
+                    <input id="verify-name" type="text" placeholder="Full Name"
+                        class="w-full px-5 py-3.5 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-primary/20 outline-none text-sm transition-all focus:bg-white text-center" />
+                </div>
+                <div class="w-full space-y-2 pt-2">
+                    <button onclick="verifyStudent()"
+                        class="w-full bg-primary hover:bg-red-800 text-white font-bold py-4 rounded-xl shadow-lg transition-all">
+                        VERIFY ACCESS
+                    </button>
+                    <button onclick="hideVerifyScreen()"
+                        class="w-full py-3 text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600">Cancel</button>
+                </div>
+            </div>
+
+            <!-- Chat Area -->
+            <div id="chat-messages"
+                class="flex-1 bg-gray-50 dark:bg-slate-900 overflow-y-auto p-4 space-y-4 relative scroll-smooth">
+                <!-- Welcome Message -->
+                <div class="flex w-full flex-col items-center justify-center pt-4 pb-2 opacity-50 select-none">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Today</span>
+                </div>
+
+                <div class="flex gap-3">
+                    <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-1">
+                        <span class="material-icons text-primary text-sm">smart_toy</span>
+                    </div>
+                    <div
+                        class="bg-white dark:bg-slate-800 p-3 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200">
+                        Hello! I can help you check <strong>programs, fees</strong>, or access your
+                        <strong>grades</strong> securely.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Suggestion Chips (Improved Spacing) -->
+            <div id="chips-area"
+                class="px-4 py-3 bg-gray-50 dark:bg-slate-900 flex gap-2 overflow-x-auto custom-scrollbar shrink-0 border-t border-gray-100 dark:border-slate-800">
+            </div>
+
+            <!-- Standard Security Panel -->
+            <div id="security-panel"
+                class="mx-4 mb-2 bg-white border border-gray-200 rounded-lg px-3 py-2 flex items-center justify-between shadow-sm">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-red-400" id="security-dot"></div>
+                    <div class="flex flex-col">
+                        <span id="security-status-text"
+                            class="text-[10px] font-bold text-slate-600 uppercase tracking-wider">LOCKED</span>
+                        <span id="security-helper-text" class="text-[9px] text-slate-400 hidden"></span>
+                    </div>
+                </div>
+                <button id="security-action-btn" onclick="openHighSecurityPanel()"
+                    class="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded transition-colors">
+                    UNLOCK
+                </button>
+            </div>
+
+            <!-- Input Area -->
+            <div id="input-area"
+                class="bg-white dark:bg-slate-800 p-3 border-t border-gray-100 dark:border-slate-700 shrink-0">
+                <div class="relative flex items-center bg-gray-100 dark:bg-slate-700 rounded-full px-2">
+                    <input id="chat-input" onkeypress="handleKeyPress(event)"
+                        class="w-full bg-transparent border-0 focus:ring-0 text-slate-900 dark:text-white placeholder:text-gray-400 py-3 pl-3 text-sm"
+                        placeholder="Type a message..." type="text" autocomplete="off" />
+                    <button onclick="sendMessage()"
+                        class="text-primary hover:text-red-700 p-2 rounded-full transition-colors">
+                        <span class="material-icons transform -rotate-45 translate-x-1">send</span>
+                    </button>
+                </div>
+                <div class="text-center mt-1">
+                    <p class="text-[9px] text-gray-400">Powered by Gemini AI</p>
+                </div>
+            </div>
+
+            <!-- Password Modal (Solid Background) -->
+            <div id="password-screen"
+                class="hidden absolute inset-0 bg-white dark:bg-slate-900 z-[60] flex flex-col items-center justify-center p-6">
+                <div
+                    class="bg-gray-50 dark:bg-slate-800 p-6 rounded-2xl shadow-xl w-full max-w-[280px] text-center border border-gray-100">
+                    <span class="material-icons text-3xl text-gray-300 mb-2">lock</span>
+                    <h4 class="font-bold text-base mb-1 text-slate-800 dark:text-white">Verify Password</h4>
+                    <p class="text-xs text-slate-500 mb-4">Enter your account password.</p>
+
+                    <input id="secure-password" type="password"
+                        class="w-full text-center text-xl font-bold tracking-widest border border-gray-200 rounded-lg py-2 mb-4 bg-white focus:bg-white outline-none focus:border-primary transition-colors"
+                        placeholder="Enter password" />
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="hidePasswordScreen()"
+                            class="py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-lg">CANCEL</button>
+                        <button onclick="submitPassword()"
+                            class="py-2 text-xs font-bold bg-primary text-white rounded-lg shadow-sm hover:bg-red-700">CONFIRM</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Float Button (Standard) -->
+        <button onclick="toggleChatbot()"
+            class="flex items-center gap-2 bg-gradient-to-r from-primary to-rose-700 text-white pl-4 pr-2 py-2 rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all group">
+            <span class="font-bold text-sm ml-1">Chat Assistant</span>
+            <div class="bg-white/20 p-1.5 rounded-full">
+                <span class="material-icons text-white text-lg">smart_toy</span>
+            </div>
+        </button>
+    </div>
+
+    <script src="js/app.js"></script>
+    <section class="bg-slate-50 dark:bg-slate-900/50 py-10">
+        <div class="max-w-7xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div class="flex flex-col items-center text-center space-y-2 group cursor-pointer">
+                <div
+                    class="w-16 h-16 rounded-2xl bg-white dark:bg-slate-800 shadow-md flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all">
+                    <span class="material-icons text-3xl">edit_note</span>
+                </div>
+                <span class="text-xs font-bold uppercase tracking-wide">Programmes</span>
+            </div>
+            <div class="flex flex-col items-center text-center space-y-2 group cursor-pointer">
+                <div
+                    class="w-16 h-16 rounded-2xl bg-white dark:bg-slate-800 shadow-md flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all">
+                    <span class="material-icons text-3xl">payments</span>
+                </div>
+                <span class="text-xs font-bold uppercase tracking-wide">Scholarships</span>
+            </div>
+            <div class="flex flex-col items-center text-center space-y-2 group cursor-pointer">
+                <div
+                    class="w-16 h-16 rounded-2xl bg-white dark:bg-slate-800 shadow-md flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all">
+                    <span class="material-icons text-3xl">map</span>
+                </div>
+                <span class="text-xs font-bold uppercase tracking-wide">Campus Tour</span>
+            </div>
+            <div class="flex flex-col items-center text-center space-y-2 group cursor-pointer">
+                <div
+                    class="w-16 h-16 rounded-2xl bg-white dark:bg-slate-800 shadow-md flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all">
+                    <span class="material-icons text-3xl">event</span>
+                </div>
+                <span class="text-xs font-bold uppercase tracking-wide">Events</span>
+            </div>
+        </div>
+    </section>
+
+</body>
+
+</html>

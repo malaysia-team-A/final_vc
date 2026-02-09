@@ -1,0 +1,132 @@
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+
+body {
+    font-family: 'Inter', sans-serif;
+}
+
+.hero-gradient {
+    background: linear-gradient(135deg, #7a1215 0%, #a31e22 100%);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.animate-fade-in-up {
+    animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom Scrollbar Styles */
+.custom-scrollbar::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(163, 30, 34, 0.3);
+    border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(163, 30, 34, 0.5);
+}
+
+.custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(163, 30, 34, 0.3) transparent;
+}
+
+/* Chat message formatting */
+.markdown-body {
+    white-space: pre-line !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+}
+
+.markdown-body p {
+    margin: 0;
+}
+
+.student-info {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 8px 0;
+}
+
+.dark .student-info {
+    background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
+}
+
+.profile-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.profile-card-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #374151;
+}
+
+.dark .profile-card-title {
+    color: #f3f4f6;
+}
+
+.profile-card-grid {
+    display: grid;
+    gap: 8px;
+}
+
+.profile-card-row {
+    display: grid;
+    grid-template-columns: minmax(96px, 38%) 1fr;
+    gap: 10px;
+    align-items: start;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #f9fafb;
+    padding: 8px 10px;
+}
+
+.dark .profile-card-row {
+    border-color: #374151;
+    background: #111827;
+}
+
+.profile-card-key {
+    font-size: 12px;
+    font-weight: 700;
+    color: #6b7280;
+    word-break: break-word;
+}
+
+.dark .profile-card-key {
+    color: #9ca3af;
+}
+
+.profile-card-value {
+    font-size: 12px;
+    font-weight: 500;
+    color: #111827;
+    word-break: break-word;
+}
+
+.dark .profile-card-value {
+    color: #f9fafb;
+}

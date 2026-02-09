@@ -1,0 +1,13 @@
+@echo off
+setlocal
+cd /d "%~dp0\..\.."
+echo Killing existing python processes...
+taskkill /F /IM python.exe
+timeout /t 3
+echo Starting Server...
+start /B python main.py > data\reports\server_log.txt 2>&1
+echo Waiting for server to initialize...
+timeout /t 20
+echo Starting Stress Test...
+start /B python scripts\qa\stress_test_runner.py > data\reports\test_log.txt 2>&1
+echo Done. Check data\reports\server_log.txt and data\reports\test_log.txt for details.
