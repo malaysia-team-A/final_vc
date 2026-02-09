@@ -136,12 +136,12 @@ class RAGEngine:
     def search(self, query: str, n_results=3) -> str:
         """
         Search for relevant context from multiple sources:
-        1. FAISS vector index (documents)
-        2. MongoDB collections (Hostel, Facility, FAQ, Schedule, Staff, Major)
+        1. FAISS vector index (documents + DB Collections)
+        2. MongoDB collections (Structured Data: Hostel Prices, Schedules, etc.)
         """
         results = []
         
-        # 1. FAISS Document Search
+        # 1. FAISS Semantic Search (Docs + Ingested DB Collections)
         if self.enabled and self.index is not None and self.index.ntotal > 0:
             try:
                 query_vector = self.model.encode([query])
@@ -149,70 +149,158 @@ class RAGEngine:
                 
                 for idx in I[0]:
                     if idx != -1 and idx < len(self.metadata):
-                        results.append(f"[Document] {self.metadata[idx]['text']}")
+                        meta = self.metadata[idx]
+                        text = meta.get('text', '')
+                        source = meta.get('source', 'Unknown')
+                        
+                        # Format based on source
+                        if source.startswith("DB:"):
+                            coll_name = source.replace("DB:", "")
+                            results.append(f"[DB: {coll_name}]\n{text}")
+                        else:
+                            results.append(f"[Document: {source}]\n{text}")
+                            
             except Exception as e:
                 print(f"FAISS Search Error: {e}")
         
-        # 2. MongoDB Collection Search
+        # 2. MongoDB Structured Search (Keywords for Specific Data)
+        # Note: FAQ/Q&A collections are now handled by Vector Search above.
+        # We only keep keyword search for highly structured data (Tables, Schedules)
         try:
             from .db_engine import db_engine
-            if db_engine.connected and db_engine.db:
+            if db_engine.connected and db_engine.db is not None:
                 query_lower = query.lower()
                 
-                # Hostel queries
-                if any(k in query_lower for k in ['hostel', 'room', 'accommodation', 'dorm', '기숙사', '숙소']):
+                # Hostel (Price List / Room Types) - Structured Data
+                if any(k in query_lower for k in ['hostel', 'room', 'accommodation', 'dorm', '기숙사', '숙소', 'block']):
                     hostels = list(db_engine.db['Hostel'].find({}, {"_id": 0}).limit(5))
                     if hostels:
-                        hostel_info = "\n".join([f"- {h.get('room_type', 'Room')}: RM{h.get('rent_price', 'N/A')}/month, Deposit: RM{h.get('deposit', 'N/A')}, Building: {h.get('building', '')}" for h in hostels])
-                        results.append(f"[Hostel Info]\n{hostel_info}")
+                        # Format as a concise list/table
+                        hostel_info = "\n".join([f"- {h.get('room_type', 'Room')}: RM{h.get('rent_price', 'N/A')}/mo ({h.get('building', '')})" for h in hostels])
+                        results.append(f"[Hostel Prices]\n{hostel_info}")
                 
-                # Facility queries
+                # Facility (Hours / Location) - Structured Data
                 if any(k in query_lower for k in ['facility', 'gym', 'library', 'cafeteria', '시설', '도서관', '체육관']):
                     facilities = list(db_engine.db['UCSI_FACILITY'].find({}, {"_id": 0}).limit(5))
                     if facilities:
-                        fac_info = "\n".join([f"- {f.get('name', '')}: {f.get('location', '')}, Hours: {f.get('opening_hours', '')}" for f in facilities])
+                        fac_info = "\n".join([f"- {f.get('name', '')}: {f.get('location', '')} ({f.get('opening_hours', '')})" for f in facilities])
                         results.append(f"[Facility Info]\n{fac_info}")
                 
-                # FAQ queries (Hostel)
-                if any(k in query_lower for k in ['faq', 'question', 'how to', '질문', '방법']):
-                    faqs = list(db_engine.db['UCSI_HOSTEL_FAQ'].find({}, {"_id": 0}).limit(3))
-                    if faqs:
-                        faq_info = "\n".join([f"Q: {f.get('question', '')}\nA: {f.get('answer', '')}" for f in faqs])
-                        results.append(f"[FAQ]\n{faq_info}")
-                
-                # Schedule queries
+                # Schedule queries (Dates) - Structured Data
                 if any(k in query_lower for k in ['schedule', 'deadline', 'registration', 'semester', '일정', '학기', '등록']):
                     schedules = list(db_engine.db['USCI_SCHEDUAL'].find({}, {"_id": 0}).limit(5))
                     if schedules:
                         sched_info = "\n".join([f"- {s.get('event_name', '')}: {s.get('start_date', '')} ~ {s.get('end_date', '')}" for s in schedules])
                         results.append(f"[Academic Schedule]\n{sched_info}")
                 
-                # Programme/Fee queries
+                # Programme/Fee queries (Tabular) - Structured Data
                 if any(k in query_lower for k in ['fee', 'tuition', 'cost', 'program', 'course', 'major', '학비', '전공', '프로그램']):
                     majors = list(db_engine.db['UCSI_ MAJOR'].find({}, {"_id": 0}).limit(3))
                     if majors:
-                        major_info = "\n".join([f"- {m.get('Programme', '')}: Local Fee: {m.get('Local Students Fees', 'N/A')}, Duration: {m.get('Course Duration', '')}" for m in majors])
-                        results.append(f"[Programme Info]\n{major_info}")
+                        major_info = "\n".join([f"- {m.get('Programme', '')}: RM{m.get('Local Students Fees', 'N/A')} ({m.get('Course Duration', '')})" for m in majors])
+                        results.append(f"[Programme Fees]\n{major_info}")
                 
-                # Staff queries
+                # Staff queries (Directory) - Structured Data
                 if any(k in query_lower for k in ['staff', 'professor', 'lecturer', 'contact', '교수', '연락처', '담당자']):
                     staff_data = list(db_engine.db['UCSI_STAFF'].find({}, {"_id": 0}).limit(2))
                     if staff_data:
                         for dept in staff_data:
                             members = dept.get('staff_members', [])[:3]
-                            staff_info = "\n".join([f"- {m.get('name', '')}: {m.get('role', '')}, {m.get('email', '')}" for m in members])
-                            results.append(f"[Staff - {dept.get('major', '')}]\n{staff_info}")
+                            staff_info = "\n".join([f"- {m.get('name', '')}: {m.get('role', '')} ({m.get('email', '')})" for m in members])
+                            results.append(f"[Staff Directory - {dept.get('major', '')}]\n{staff_info}")
                 
         except Exception as e:
             print(f"MongoDB RAG Search Error: {e}")
         
         return "\n\n".join(results) if results else ""
 
+    # [ADDED] RAG Upgrade: Ingest MongoDB Collection
+    def ingest_collection(self, collection_name: str, fields: List[str]):
+        """
+        Ingest a MongoDB collection into the vector DB.
+        collection_name: Name of the collection (e.g., 'UCSI_HOSTEL_FAQ')
+        fields: List of fields to combine for embedding (e.g., ['question', 'answer'])
+        """
+        if not self.enabled: return False
+        
+        try:
+            from .db_engine import db_engine
+            if not db_engine.connected:
+                print(f"RAG Ingest Skipped: DB not connected for {collection_name}")
+                return False
+
+            print(f"[RAG] Ingesting collection: {collection_name}...")
+            documents = list(db_engine.db[collection_name].find({}, {"_id": 0}))
+            
+            if not documents:
+                print(f"[RAG] No documents found in {collection_name}")
+                return False
+            
+            new_texts = []
+            new_metadata = []
+            
+            for doc in documents:
+                # Combine fields into a single string
+                parts = [str(doc.get(f, '')) for f in fields if doc.get(f)]
+                combined_text = "\n".join(parts)
+                
+                if combined_text.strip():
+                    new_texts.append(combined_text)
+                    new_metadata.append({"text": combined_text, "source": f"DB:{collection_name}"})
+            
+            if not new_texts:
+                return False
+
+            # Check for duplicates (Simple check)
+            # In a production system, we would use IDs, but here we just check text exact match to avoid simple dups on restart
+            # For efficiency, we only add what's not already in metadata
+            unique_texts = []
+            unique_meta = []
+            
+            existing_texts = {m['text'] for m in self.metadata if m.get('source', '').startswith('DB:')}
+            
+            for i, text in enumerate(new_texts):
+                if text not in existing_texts:
+                    unique_texts.append(text)
+                    unique_meta.append(new_metadata[i])
+            
+            if unique_texts:
+                print(f"[RAG] Adding {len(unique_texts)} new items from {collection_name}")
+                embeddings = self.model.encode(unique_texts)
+                self.index.add(np.array(embeddings).astype('float32'))
+                self.metadata.extend(unique_meta)
+                self._save_index()
+                return True
+            else:
+                print(f"[RAG] No new unique items to add from {collection_name}")
+                return True
+
+        except Exception as e:
+            print(f"Error ingesting collection {collection_name}: {e}")
+            return False
+
 # Singleton
 rag_engine = RAGEngine()
 
-if __name__ == "__main__":
-    if HAS_DEPENDENCIES:
-        print("Dependencies found. Initializing FAISS RAG...")
-    else:
-        print("RAG dependencies missing.")
+# [MODIFIED] Auto-ingest critical DB collections on startup
+# Q&A 컬렉션은 question+answer 또는 query+answer 구조로, 정형 데이터는 설명 필드로 색인
+if HAS_DEPENDENCIES:
+    try:
+        # Q&A Collections (벡터 검색에 적합)
+        rag_engine.ingest_collection('UCSI_HOSTEL_FAQ', ['question', 'answer'])
+        rag_engine.ingest_collection('LearnedQA', ['query', 'answer'])
+        rag_engine.ingest_collection('BadQA', ['query', 'answer'])  # 피드백 기반 나쁜 예시
+        
+        # Structured Collections (텍스트 설명 필드가 있는 경우 색인)
+        # 시설: 이름, 위치, 운영시간을 하나의 텍스트로 결합
+        rag_engine.ingest_collection('UCSI_FACILITY', ['name', 'location', 'opening_hours', 'description'])
+        # 교직원: 이름, 역할, 전공을 텍스트로 결합 (이메일은 검색용 X)
+        # Note: UCSI_STAFF는 nested structure일 수 있으므로 별도 처리 필요 시 수정
+        # 전공: 프로그램, 기간, 학비를 텍스트로 결합
+        rag_engine.ingest_collection('UCSI_ MAJOR', ['Programme', 'Course Duration', 'Local Students Fees'])
+        # 건물 정보
+        rag_engine.ingest_collection('UCSI_University_Blocks_Data', ['block_name', 'description', 'facilities'])
+        
+    except Exception as e:
+        print(f"Startup Ingest Warning: {e}")
+

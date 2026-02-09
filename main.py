@@ -26,6 +26,7 @@ from app.utils import auth_utils
 from app.utils import logging_utils
 from app.engines.faq_cache_engine import faq_cache, unanswered_manager
 from app.engines.language_engine import detect_language, get_localized_phrase, multilingual
+from app.engines.rag_engine import rag_engine
 
 # Setup Logging
 logger = logging_utils.get_logger()
@@ -299,23 +300,101 @@ def chat():
                 "user": current_user.get("name") if current_user else "Guest"
              })
 
-        # 1. Initial Attempt (No Data Context)
-        # This checks if the AI can answer directly OR if it needs data.
-        # Pass language for optimized response
+        # 1. Intent Classification (의도 분류)
+        intent_result = ai_engine.classify_intent(user_message)
+        intent_category = intent_result.get("category", "faq")
+        search_keywords = intent_result.get("search_keywords", [])
+        logger.info(f"Intent: {intent_category}, Keywords: {search_keywords}")
+        
+        # 2. RAG Search (Vector Search for Q&A)
+        rag_context = rag_engine.search(user_message)
+        if rag_context:
+            logger.info(f"RAG Context Found for: {user_message[:20]}...")
+        
+        # 3. Intent-Based DB Search (의도 기반 정형 데이터 조회)
+        intent_context = ""
+        try:
+            from app.engines.db_engine import db_engine
+            if db_engine.connected and db_engine.db is not None:
+                # [ADDED] 의도에 따른 컬렉션 조회
+                if intent_category == "facility":
+                    facilities = list(db_engine.db['UCSI_FACILITY'].find({}, {"_id": 0}).limit(10))
+                    if facilities:
+                        intent_context = "[Facility Information]\n"
+                        for f in facilities:
+                            intent_context += f"- {f.get('name', '')}: {f.get('location', '')} ({f.get('opening_hours', '')})\n"
+                
+                elif intent_category == "staff":
+                    staff_data = list(db_engine.db['UCSI_STAFF'].find({}, {"_id": 0}).limit(5))
+                    if staff_data:
+                        intent_context = "[Staff Directory]\n"
+                        for dept in staff_data:
+                            members = dept.get('staff_members', [])[:5]
+                            for m in members:
+                                intent_context += f"- {m.get('name', '')}: {m.get('role', '')} ({m.get('email', '')})\n"
+                
+                elif intent_category == "hostel":
+                    hostels = list(db_engine.db['Hostel'].find({}, {"_id": 0}).limit(10))
+                    if hostels:
+                        intent_context = "[Hostel/Room Information]\n"
+                        for h in hostels:
+                            intent_context += f"- {h.get('room_type', 'Room')}: RM{h.get('rent_price', 'N/A')}/mo, Deposit: RM{h.get('deposit', 'N/A')} ({h.get('building', '')})\n"
+                
+                elif intent_category == "schedule":
+                    schedules = list(db_engine.db['USCI_SCHEDUAL'].find({}, {"_id": 0}).limit(10))
+                    if schedules:
+                        intent_context = "[Academic Schedule]\n"
+                        for s in schedules:
+                            intent_context += f"- {s.get('event_name', '')}: {s.get('start_date', '')} ~ {s.get('end_date', '')}\n"
+                
+                elif intent_category == "major":
+                    majors = list(db_engine.db['UCSI_ MAJOR'].find({}, {"_id": 0}).limit(10))
+                    if majors:
+                        intent_context = "[Programme/Major Information]\n"
+                        for m in majors:
+                            intent_context += f"- {m.get('Programme', '')}: RM{m.get('Local Students Fees', 'N/A')} ({m.get('Course Duration', '')})\n"
+
+                elif intent_category == "personal":
+                    # [ADDED] Pre-fetch personal data if logged in
+                    if current_user:
+                        student_data = db_engine.get_student_by_number(current_user.get("student_number"))
+                        if student_data:
+                            # Use existing helper to format context
+                            intent_context = "[Personal Student Record]\n" + build_student_context(student_data)
+                    else:
+                        # Let AI know status, but don't force login response yet (AI might just be chatting)
+                        # AI typically handles "needs_context" -> "login_hint" flow, but context helps.
+                        intent_context = "[System Note] User is NOT logged in. If they ask for personal data, ask them to login."
+                
+        except Exception as e:
+            logger.error(f"Intent-based DB search error: {e}")
+        
+        # 4. Combine Contexts (RAG + Intent-Based)
+        combined_context = ""
+        if rag_context:
+            combined_context = rag_context
+        if intent_context:
+            combined_context = (combined_context + "\n\n" + intent_context) if combined_context else intent_context
+        
+        # 5. AI Processing with Combined Context
         initial_result = ai_engine.process_message(
             user_message, 
+            data_context=combined_context, 
             conversation_history=list(conversation_history),
             language=lang
         )
         
         response_payload = {}
         response_text = ""
-        context_used = ""
+        context_used = combined_context # Track what context was used
 
+        # 3. Check if *Personal* Data is needed (and not provided by RAG)
+        # If AI says "needs_context" even after providing RAG (or if RAG was empty),
+        # it might be asking for personal student data (grades, profile).
         if initial_result.get("needs_context"):
-            # 2. Context Required -> Fetch Data & Re-Prompt
             try:
-                print(f"DEBUG: AI requested context for '{user_message}'")
+                # Only fetch personal data if RAG didn't answer it (or if AI specifically requested personal info)
+                # We check intent again to be safe.
                 search_term = initial_result.get("search_term")
                 
                 # A. Check for Personal Data / Grades first (Security)
@@ -339,72 +418,47 @@ def chat():
                             
                      student_data = data_engine.get_student_info(current_user.get("student_number"))
                      if student_data:
-                         context_used = build_student_context(student_data)
+                         personal_context = build_student_context(student_data)
+                         # Combine RAG context with Personal Context if needed
+                         context_used = (rag_context + "\n\n" + personal_context) if rag_context else personal_context
                      else:
                          context_used = "Student record not found."
-
-                # B. If not personal, check DB Stats or RAG
-                if not context_used:
-                    # 1. Staff/Faculty Search (Phase 2)
-                    if any(k in user_message.lower() for k in ["staff", "lecturer", "professor", "faculty", "dean", "teacher", "dr.", "교수", "선생님", "직원"]):
-                        staff_results = data_engine.search_staff(user_message)
-                        if staff_results:
-                            context_used = "Found Staff/Faculty Members:\n"
-                            for s in staff_results:
-                                context_used += f"- {s.get('NAME')} ({s.get('DEPARTMENT')} - {s.get('POSITION')})\n"
-
-                    # 2. DB Stats
-                    if not context_used and ("count" in user_message.lower() or "how many" in user_message.lower()):
-                        context_used = data_engine.get_summary_stats()
                     
-                    # If still no context, try RAG
-                    if not context_used or "error" in str(context_used).lower():
-                        from app.engines.rag_engine import rag_engine
-                        rag_docs = rag_engine.search(user_message)
-                        if rag_docs:
-                            if isinstance(rag_docs, str):
-                                context_used = rag_docs
-                            elif isinstance(rag_docs, list):
-                                try:
-                                    context_used = "\n".join([d.page_content for d in rag_docs if hasattr(d, 'page_content')])
-                                except:
-                                    context_used = str(rag_docs)
-                            else:
-                                context_used = str(rag_docs)
+                     # Re-process with Personal Data
+                     final_result = ai_engine.process_message(
+                        user_message, 
+                        data_context=context_used, 
+                        conversation_history=list(conversation_history),
+                        language=lang
+                    )
+                     # Update result
+                     initial_result = final_result
 
-                # 3. Final call with context
-                final_result = ai_engine.process_message(
-                    user_message, 
-                    data_context=context_used or "No specific data found.", 
-                    conversation_history=list(conversation_history),
-                    language=lang
-                )
-                
-                # Auto-cache if good response (future enhancement)
-                if not context_used or len(str(context_used)) < 10:
-                     unanswered_manager.log_unanswered(user_message, reason="low_context")
-                
-                response_text = final_result.get("response", "I couldn't find that info.")
-                # Remove markdown formatting
-                response_text = re.sub(r'\*\*([^*]+)\*\*', r'\1', response_text)  # **bold**
-                response_text = re.sub(r'\*([^*]+)\*', r'\1', response_text)  # *italic*
-                response_text = re.sub(r'^#+\s*', '', response_text, flags=re.MULTILINE)  # ## headers
-                response_payload = {
-                    "text": response_text,
-                    "suggestions": final_result.get("suggestions", [])
-                }
+                # B. If not personal and RAG failed, try structured DB stats
+                elif not rag_context and ("count" in user_message.lower() or "how many" in user_message.lower()):
+                    stats_context = data_engine.get_summary_stats()
+                    # Re-process
+                    final_result = ai_engine.process_message(
+                        user_message, 
+                        data_context=str(stats_context), 
+                        conversation_history=list(conversation_history),
+                        language=lang
+                    )
+                    initial_result = final_result
+
             except Exception as e:
                 logger.error(f"Context Fetch Error: {e}")
                 response_text = "I encountered an error looking up that information."
                 response_payload = {"text": response_text, "suggestions": []}
 
-        else:
-            # AI Answered directly (Saved 1 Call!)
-            response_text = initial_result.get("response", "")
+        # 4. Final Response Construction (Common Logic)
+        if not response_payload:
+            response_text = initial_result.get("response", "I couldn't find that info.")
             # Remove markdown formatting
             response_text = re.sub(r'\*\*([^*]+)\*\*', r'\1', response_text)  # **bold**
             response_text = re.sub(r'\*([^*]+)\*', r'\1', response_text)  # *italic*
             response_text = re.sub(r'^#+\s*', '', response_text, flags=re.MULTILINE)  # ## headers
+            
             response_payload = {
                 "text": response_text,
                 "suggestions": initial_result.get("suggestions", [])

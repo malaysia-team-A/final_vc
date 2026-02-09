@@ -32,7 +32,7 @@ class AIEngine:
 
         # PROMPTS (Modified dynamically in process_message)
         
-        self.qa_template = """You are Kai, a friendly university assistant.
+        self.qa_template = """You are lobin, a friendly handsome university assistant.
 
 Context:
 {context}
@@ -108,7 +108,7 @@ Instructions:
                 )
             else:
                 # PHASE 1: Intent Detection
-                prompt = f"""You are Kai, a friendly university assistant. Analyze the user's input.
+                prompt = f"""You are Rex, a friendly handsome university assistant. Analyze the user's input.
 
 Current Conversation:
 {conversation_text}
@@ -170,5 +170,62 @@ Instructions:
             print(f"AI Error: {e}")
             return {"response": "I'm having trouble connecting right now.", "suggestions": []}
 
-    # ... (Unified process_message method kept above) ...
-    # Deprecated fallback methods removed for cleanliness.
+    # [ADDED] Intent Classification for targeted DB search
+    def classify_intent(self, user_message: str) -> dict:
+        """
+        Classify user intent to determine which DB collection to query.
+        Returns: {"category": str, "search_keywords": list}
+        
+        Categories:
+        - facility: 시설, 체육관, 도서관 등
+        - staff: 교수, 교직원, 연락처
+        - hostel: 기숙사, 숙소, 방 가격
+        - schedule: 일정, 학사 일정, 등록
+        - major: 전공, 프로그램, 학비
+        - faq: 일반 질문 (벡터 검색으로 처리)
+        - personal: 개인정보 (학생 프로필, 성적)
+        - general: 일반 대화 (DB 조회 불필요)
+        """
+        if not self.client:
+            return {"category": "faq", "search_keywords": []}
+        
+        try:
+            prompt = f"""Classify the user's question into ONE category.
+
+User Question: {user_message}
+
+Categories:
+- facility: Questions about campus facilities (gym, library, cafeteria, parking, labs)
+- staff: Questions about professors, lecturers, staff, contact info
+- hostel: Questions about dormitory, accommodation, room types, rent, hostel rules
+- schedule: Questions about academic calendar, deadlines, registration dates, semester
+- major: Questions about programs, courses, tuition fees, duration
+- faq: General university questions that don't fit above categories
+- personal: Questions about "my" data (my grades, my profile, who am I)
+- general: Greetings, chit-chat, thanks, unrelated topics
+
+Also extract 1-3 key search terms from the question.
+
+Output JSON ONLY:
+{{"category": "one_of_above", "search_keywords": ["term1", "term2"]}}
+"""
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt
+            )
+            raw_text = response.text.strip()
+            
+            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group())
+                return {
+                    "category": data.get("category", "faq"),
+                    "search_keywords": data.get("search_keywords", [])
+                }
+            
+            return {"category": "faq", "search_keywords": []}
+            
+        except Exception as e:
+            print(f"Intent Classification Error: {e}")
+            return {"category": "faq", "search_keywords": []}
+

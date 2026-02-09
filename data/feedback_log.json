@@ -53,10 +53,19 @@
       "ai_response": "안녕하세요! 무엇을 도와드릴까요?",
       "rating": "positive",
       "comment": null
+    },
+    {
+      "id": 7,
+      "timestamp": "2026-02-09T12:12:21.446197",
+      "session_id": "jwt_session",
+      "user_message": "tell me what I said",
+      "ai_response": "You've mentioned Rex is a senior oracle apex developer at UCSI and the project lead for the internship program. You previously asked about Rex and Voon Wen Haw, but I haven't been able to find information about them in my database yet.",
+      "rating": "positive",
+      "comment": null
     }
   ],
   "stats": {
-    "positive": 1,
+    "positive": 2,
     "negative": 5
   }
 }
