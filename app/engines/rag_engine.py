@@ -412,7 +412,7 @@ class RAGEngine:
             results.append((text, score, "MongoDB:Facility:direct", "Facility"))
         return results
 
-    def _search_staff_role_direct(self, db, query: str, limit: int = 3) -> list:
+    def _search_staff_role_direct(self, db, query: str, limit: int = 15) -> list:
         """
         Dedicated staff-role retriever for leadership queries
         (e.g., Vice Chancellor, Dean).
@@ -882,7 +882,7 @@ class RAGEngine:
                     text_fields: list,
                     label: str,
                     queries: List[str],
-                    limit: int = 3
+                    limit: int = 15
                 ) -> list:
                     """
                     Enhanced search with multiple strategies:
@@ -1046,7 +1046,7 @@ class RAGEngine:
 
                 # Define Search Domains
                 domains = [
-                    ('UCSI_ MAJOR', ['Programme', 'Fields of Study', 'Local Students Fees', 'International Students Fees'], 'Programme'),
+                    ('UCSI_ MAJOR', ['Programme', 'Fields of Study', 'Local Students Fees', 'International Students Fees', 'Url'], 'Programme'),
                     ('Hostel', ['room_type', 'building', 'campus', 'category', 'features'], 'Hostel'),
                     ('UCSI_FACILITY', ['name', 'location', 'category', 'opening_hours', 'tags'], 'Facility'),
                     ('USCI_SCHEDUAL', ['event_name', 'event_type', 'programme', 'campus_scope'], 'Schedule'),
@@ -1086,8 +1086,8 @@ class RAGEngine:
                                 if isinstance(v, (str, int, float)):
                                     details_parts.append(f"{k}: {v}")
                                 elif k == "staff_members" and isinstance(v, list):
-                                    # Flatten key staff entities to preserve leadership intent in responses.
-                                    for member in v[:3]:
+                                    # Flatten all staff entities to include all relevant links.
+                                    for member in v:
                                         if not isinstance(member, dict):
                                             continue
                                         m_name = member.get("name")
@@ -1101,6 +1101,9 @@ class RAGEngine:
                                         m_email = member.get("email")
                                         if m_email:
                                             details_parts.append(f"email: {m_email}")
+                                        m_profile_url = member.get("profile_url")
+                                        if m_profile_url:
+                                            details_parts.append(f"profile_url: {m_profile_url}")
                             details = ", ".join(details_parts)
                             
                             text = f"[{label}] {name}: {details}"
@@ -1149,7 +1152,7 @@ class RAGEngine:
         if has_relevant:
             # Build context from top results (limit to avoid token overflow)
             context_parts = []
-            for text, score, source in results_with_scores[:5]:  # Top 5
+            for text, score, source in results_with_scores[:20]:  # Top 20 (Expanded from 5)
                 if score >= CONFIDENCE_THRESHOLD:
                     context_parts.append(f"{text} [conf:{score:.2f}]")
             
