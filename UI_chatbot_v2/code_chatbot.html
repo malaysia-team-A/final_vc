@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>University Chatbot Popup</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#a81d22", // UCSI Red based on screenshot
+                        "primary-dark": "#7a1519",
+                        "ucsi-bg": "#991b1e", // Dark red background
+                        "chatbot-header": "#a81d22", // Using primary red for chatbot header to match brand
+                        "chatbot-bg": "#f3f4f6",
+                        "user-bubble": "#a81d22", // Red for user bubble to match brand
+                        "bot-bubble": "#e5e7eb",
+                        "background-light": "#ffffff",
+                        "background-dark": "#1f2937",
+                    },
+                    fontFamily: {
+                        display: ["Inter", "sans-serif"],
+                        body: ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.5rem",
+                    },
+                },
+            },
+        };
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .chat-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .chat-scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .chat-scroll::-webkit-scrollbar-thumb {
+            background-color: rgba(156, 163, 175, 0.5);
+            border-radius: 20px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 overflow-hidden h-screen w-full relative">
+<div class="absolute inset-0 z-0 overflow-y-auto pointer-events-none select-none opacity-40 blur-[1px]">
+<header class="bg-white dark:bg-gray-800 shadow-sm py-4 px-8 flex justify-between items-center">
+<div class="flex items-center gap-4">
+<div class="font-bold text-2xl text-primary dark:text-red-400 flex items-center gap-2">
+<img alt="UCSI Logo" class="h-10 w-auto opacity-80 filter grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBKvpMO11K5-VbaMgaWBiPiu0Lxlg8c_lBcTWwryfhGd3XnWdJSlGsPjYTI1aIG60UjCNWu_S8wwf6--CRjEtErGAwUwzTQ8sXfl2akdglPxq7QWfYNiq1xGzruSYaPAEUNUfORq_sdO5o-G2tGjSiK-PjXZwx8jG8zCjDne82kbbPPojU304gkzZgV74gGpGLJzH-yaXebM4vVp8koDR7i7ZJVHHY2BYFc_cKUOghVMhZq6lDgTUEfikjQWkfsTuDP5h4QidT0PNUz" style="filter: grayscale(100%);"/>
+</div>
+<span class="bg-orange-500 text-white text-xs font-bold px-2 py-1 rounded">QS WORLD'S TOP 1%</span>
+</div>
+<nav class="flex items-center gap-6 text-xs font-semibold text-gray-600 dark:text-gray-300">
+<div class="flex flex-col items-center"><span class="material-icons text-lg">person</span>RESOURCES</div>
+<div class="flex flex-col items-center"><span class="material-icons text-lg">list</span>LINKS</div>
+<div class="flex flex-col items-center"><span class="material-icons text-lg">language</span>LANGUAGE</div>
+<div class="flex flex-col items-center"><span class="material-icons text-lg">search</span>SEARCH</div>
+<button class="bg-primary text-white px-6 py-2 rounded font-bold">APPLY NOW</button>
+</nav>
+</header>
+<section class="bg-ucsi-bg text-white min-h-[600px] flex items-center justify-center relative px-16">
+<div class="w-full max-w-7xl grid grid-cols-2 gap-12 items-center">
+<div class="space-y-6">
+<h1 class="text-6xl font-black leading-tight">APPLY DIRECTLY<br/>WITH US</h1>
+<p class="text-xl italic font-light opacity-90">Click the button below or scan the QR code</p>
+<div class="space-y-2 pt-8 border-t border-white/20">
+<h2 class="text-4xl font-bold italic">WORLD'S TOP 1%</h2>
+<h2 class="text-4xl font-bold italic">TOP 30 IN ASIA</h2>
+<h2 class="text-4xl font-bold italic">#8 IN SOUTHEAST ASIA</h2>
+</div>
+</div>
+<div class="flex justify-end">
+<div class="bg-white p-4 rounded-xl shadow-2xl transform rotate-3 max-w-md">
+<div class="bg-orange-200 p-8 rounded flex items-center justify-center aspect-square">
+<div class="bg-white p-4 shadow-lg">
+<span class="material-icons text-8xl text-gray-800">qr_code_2</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<button class="absolute bottom-24 right-24 border-2 border-white rounded-full px-8 py-3 text-2xl font-bold flex items-center gap-4 hover:bg-white hover:text-ucsi-bg transition-colors">
+                APPLY NOW <span class="material-icons">touch_app</span>
+</button>
+</section>
+<section class="bg-white dark:bg-gray-800 py-12 px-16">
+<div class="flex justify-around text-center">
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 bg-red-50 rounded-xl flex items-center justify-center text-primary"><span class="material-icons text-3xl">menu_book</span></div>
+<span class="font-bold text-sm">PROGRAMMES</span>
+</div>
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 bg-red-50 rounded-xl flex items-center justify-center text-primary"><span class="material-icons text-3xl">paid</span></div>
+<span class="font-bold text-sm">SCHOLARSHIPS</span>
+</div>
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 bg-red-50 rounded-xl flex items-center justify-center text-primary"><span class="material-icons text-3xl">map</span></div>
+<span class="font-bold text-sm">CAMPUS TOUR</span>
+</div>
+</div>
+</section>
+</div>
+<div class="absolute bottom-6 right-6 z-50 flex flex-col items-end">
+<div class="w-[380px] h-[650px] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700 font-display transform transition-all animate-fade-in-up">
+<div class="bg-primary p-4 flex items-center justify-between text-white shrink-0">
+<div class="flex items-center gap-3">
+<div class="relative">
+<div class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-primary font-bold overflow-hidden border-2 border-white/30">
+<span class="material-icons text-2xl">smart_toy</span>
+</div>
+<div class="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-primary rounded-full"></div>
+</div>
+<div>
+<h3 class="font-bold text-lg leading-tight">UCSI Assistant</h3>
+<p class="text-xs text-red-100 flex items-center gap-1"><span class="w-1.5 h-1.5 bg-green-400 rounded-full inline-block"></span> Online</p>
+</div>
+</div>
+<button class="hover:bg-white/10 p-1 rounded-full transition-colors">
+<span class="material-icons">remove</span>
+</button>
+</div>
+<div class="flex-1 bg-gray-50 dark:bg-gray-900 overflow-y-auto p-4 space-y-4 chat-scroll relative">
+<div class="absolute inset-0 bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 pointer-events-none"></div>
+<div class="flex justify-center relative z-10">
+<span class="text-[10px] text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">Today</span>
+</div>
+<div class="flex gap-3 relative z-10">
+<div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-1">
+<span class="material-icons text-primary text-sm">smart_toy</span>
+</div>
+<div class="flex flex-col gap-1 max-w-[80%]">
+<span class="text-[10px] text-gray-400 ml-1">10:00 AM</span>
+<div class="bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 p-3 rounded-2xl rounded-tl-none shadow-sm text-sm border border-gray-100 dark:border-gray-600">
+<p>Hello! Welcome to UCSI University. I'm your virtual assistant. How can I help you today?</p>
+</div>
+</div>
+</div>
+<div class="flex gap-3 flex-row-reverse relative z-10">
+<div class="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-600 overflow-hidden shrink-0 mt-1">
+<img alt="User Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBIOr6cEiWYwBR29zUzrNrpggEWEMySBrsXxQhb0KDIDbSocdQkM7RUOJKIu0MxWvPCy0orFydc8Nwx7rjhsnnp5EIBPXqXZEEspyrfHIhI-6KFSNy-vZ7W5IxeQgSI4ZBbZcRsJho8tLZ12aEFoUkLncfWOtx4YbGhC5f-ChteJfrIumoEul1aLVcIdRnKdecrlyIUjkUsZMGzBNNJit7hax-Hj04i2IdIN60BoGOGL7E6I0hBn-jrc-DF4GopqM_ZUQPVlu-5iprP"/>
+</div>
+<div class="flex flex-col gap-1 items-end max-w-[80%]">
+<span class="text-[10px] text-gray-400 mr-1 flex items-center gap-1">10:02 AM <span class="material-icons text-[10px]">done_all</span></span>
+<div class="bg-primary text-white p-3 rounded-2xl rounded-tr-none shadow-md text-sm">
+<p>I'm interested in applying for the Computer Science program. What are the requirements?</p>
+</div>
+</div>
+</div>
+<div class="flex gap-3 relative z-10">
+<div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-1">
+<span class="material-icons text-primary text-sm">smart_toy</span>
+</div>
+<div class="flex flex-col gap-1 max-w-[85%]">
+<span class="text-[10px] text-gray-400 ml-1">10:02 AM</span>
+<div class="bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 p-3 rounded-2xl rounded-tl-none shadow-sm text-sm border border-gray-100 dark:border-gray-600 group relative">
+<p class="mb-2">Great choice! For the Bachelor of Computer Science (Hons), general requirements include:</p>
+<ul class="list-disc list-inside space-y-1 mb-3 pl-1 text-gray-600 dark:text-gray-300">
+<li>A-Levels: Minimum 2 Passes</li>
+<li>STPM: Minimum 2 Passes (C)</li>
+<li>UEC: Minimum 5 Bs</li>
+<li>Foundation in Science: Min CGPA 2.0</li>
+</ul>
+<div class="mb-3 rounded-lg overflow-hidden border border-gray-100 dark:border-gray-600">
+<img alt="Requirements Summary Infographic" class="w-full h-32 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDolTlKzMzW2f_kg1dSSRMZtENuvJcAdsRVwA3NNdVSC6-6hAXq03twEzC7_5H2sFcnH1x_eCYceApsu1r7L-tWuoxcm_zL-An1-buA31X24s1-sounLH6B-ZRS5KZiITw5yZJeBv8J9EWufcGa52XSBcibBBvqtR9NfOl5lL8fiJ5RXL5nokXG6_YQdQx6hEwRFJFecoIDo7rr3vsPizHWxDvuVvPnVmKhCODvZjQNt5KfuxBzrKJbCDP5jmUEKUsrIw2CvRjo9TUN"/>
+</div>
+<a class="flex items-center justify-center gap-2 w-full bg-primary hover:bg-primary-dark text-white py-2 px-4 rounded-lg transition-colors text-xs font-bold mb-2 shadow-sm" href="#">
+                                    View Full Requirements
+                                    <span class="material-icons text-[14px]">open_in_new</span>
+</a>
+<p class="text-xs text-gray-500 dark:text-gray-400">Would you like to see the full course details?</p>
+<div class="absolute -bottom-3 right-2 flex gap-1">
+<button class="bg-primary text-white p-1 rounded-full shadow-sm hover:bg-primary-dark transition text-[10px] w-6 h-6 flex items-center justify-center">
+<span class="material-icons text-[12px]">content_copy</span>
+</button>
+<button class="bg-primary text-white p-1 rounded-full shadow-sm hover:bg-primary-dark transition text-[10px] w-6 h-6 flex items-center justify-center">
+<span class="material-icons text-[12px]">thumb_up</span>
+</button>
+<button class="bg-primary text-white p-1 rounded-full shadow-sm hover:bg-primary-dark transition text-[10px] w-6 h-6 flex items-center justify-center">
+<span class="material-icons text-[12px]">thumb_down</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<div class="flex gap-3 relative z-10">
+<div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-1">
+<span class="material-icons text-primary text-sm">smart_toy</span>
+</div>
+<div class="bg-white dark:bg-gray-700 p-3 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 dark:border-gray-600 w-12 flex items-center justify-center gap-1">
+<div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
+<div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-75"></div>
+<div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-150"></div>
+</div>
+</div>
+</div>
+<div class="px-4 py-2 bg-gray-50 dark:bg-gray-900 flex gap-2 overflow-x-auto no-scrollbar relative z-20 border-t border-gray-100 dark:border-gray-700">
+<button class="whitespace-nowrap bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-full px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-red-50 hover:text-primary hover:border-red-200 transition-colors shadow-sm flex items-center gap-1">
+<span class="text-lg">🏫</span> About UCSI
+                </button>
+<button class="whitespace-nowrap bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-full px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-red-50 hover:text-primary hover:border-red-200 transition-colors shadow-sm flex items-center gap-1">
+<span class="text-lg">📝</span> Admissions
+                </button>
+<button class="whitespace-nowrap bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-full px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-red-50 hover:text-primary hover:border-red-200 transition-colors shadow-sm flex items-center gap-1">
+<span class="text-lg">💰</span> Scholarships
+                </button>
+<button class="whitespace-nowrap bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-full px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-red-50 hover:text-primary hover:border-red-200 transition-colors shadow-sm flex items-center gap-1">
+<span class="text-lg">❓</span> FAQs
+                </button>
+</div>
+<div class="bg-white dark:bg-gray-800 p-4 border-t border-gray-100 dark:border-gray-700 shrink-0 z-20">
+<div class="bg-gray-100 dark:bg-gray-700 rounded-xl flex items-center p-1 pr-2">
+<input class="bg-transparent border-0 focus:ring-0 flex-1 text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 px-3 py-2" placeholder="Type your message here..." type="text"/>
+<button class="text-primary hover:text-primary-dark p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+<span class="material-icons transform -rotate-45 translate-x-0.5 translate-y-[-1px]">send</span>
+</button>
+</div>
+<div class="text-center mt-2">
+<p class="text-[10px] text-gray-400 dark:text-gray-500">Powered by UCSI AI Assistant</p>
+</div>
+</div>
+</div>
+</div>
+</body></html>
