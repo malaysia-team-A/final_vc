@@ -647,6 +647,32 @@ class RAGEngine:
                     docs = list(coll.find({}, {"_id": 0}))
                     
                     for doc in docs:
+                        # SPECIAL HANDLING: Staff members should be indexed individually for precision
+                        if config["name"] == "UCSI_STAFF" and "staff_members" in doc:
+                            members = doc["staff_members"]
+                            if isinstance(members, list):
+                                for member in members:
+                                    if not isinstance(member, dict):
+                                        continue
+                                    
+                                    m_text_parts = [f"[{config['label']}]", f"major: {doc.get('major', 'N/A')}"]
+                                    for m_key, m_val in member.items():
+                                        # Clean up invalid URL/values
+                                        val_str = str(m_val).strip()
+                                        if val_str.lower() in ["n/a", "none", "null", "not available", ""]:
+                                            continue
+                                        m_text_parts.append(f"{m_key}: {m_val}")
+                                    
+                                    m_full_text = " | ".join(m_text_parts)
+                                    if len(m_full_text) > 30:
+                                        mongo_texts.append(m_full_text)
+                                        mongo_metadata_entries.append({
+                                            "text": m_full_text,
+                                            "source": f"MongoDB:{config['name']}:member",
+                                            "type": "collection"
+                                        })
+                                continue
+
                         # Build searchable text from document
                         text_parts = [f"[{config['label']}]"]
                         
@@ -654,14 +680,23 @@ class RAGEngine:
                             if field in doc:
                                 value = doc[field]
                                 if isinstance(value, str):
-                                    text_parts.append(f"{field}: {value}")
+                                    # Clean up
+                                    if value.strip().lower() not in ["n/a", "none", "null", ""]:
+                                        text_parts.append(f"{field}: {value}")
                                 elif isinstance(value, list):
-                                    # Handle arrays (like staff_members)
-                                    for item in value[:5]:  # Limit array items
+                                    # Handle arrays
+                                    for item in value:
                                         if isinstance(item, dict):
-                                            text_parts.append(str(item))
+                                            # Flatten dict to string with cleaning
+                                            item_parts = []
+                                            for k, v in item.items():
+                                                if str(v).strip().lower() not in ["n/a", "none", "null", ""]:
+                                                    item_parts.append(f"{k}: {v}")
+                                            if item_parts:
+                                                text_parts.append(", ".join(item_parts))
                                         else:
-                                            text_parts.append(str(item))
+                                            if str(item).strip().lower() not in ["n/a", "none", "null", ""]:
+                                                text_parts.append(str(item))
                                 elif isinstance(value, (int, float)):
                                     text_parts.append(f"{field}: {value}")
                         

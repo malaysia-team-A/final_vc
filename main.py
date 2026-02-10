@@ -10,7 +10,9 @@ from app.engines.rag_engine_async import rag_engine_async
 import app.api.auth as auth
 import app.api.chat as chat
 import app.api.admin as admin
-
+import traceback
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,6 +33,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def catch_exceptions_middleware(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        print(f"DEBUG: Caught exception: {exc}")
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 # Routers
 app.include_router(auth.router, prefix="/api", tags=["Auth"])

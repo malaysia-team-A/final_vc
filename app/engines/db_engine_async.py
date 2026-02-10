@@ -236,36 +236,40 @@ class AsyncDatabaseEngine:
 
         try:
             escaped = re.escape(candidate)
+            # Try to match name exactly first, then as a substring
             patterns = [rf"^{escaped}$", escaped]
 
             for pattern in patterns:
                 name_filter = {"$regex": pattern, "$options": "i"}
-                doc = await coll.find_one(
-                    {"staff_members.name": name_filter},
+                # Search across all documents and unwind to find ALL matching members
+                pipeline = [
+                    {"$unwind": "$staff_members"},
+                    {"$match": {"staff_members.name": name_filter}},
                     {
-                        "_id": 0,
-                        "major": 1,
-                        "staff_members": {"$elemMatch": {"name": name_filter}},
+                        "$project": {
+                            "_id": 0,
+                            "major": 1,
+                            "name": "$staff_members.name",
+                            "role": "$staff_members.role",
+                            "email": "$staff_members.email",
+                            "profile_url": "$staff_members.profile_url"
+                        }
                     },
-                )
-                if not doc:
-                    continue
-
-                members = doc.get("staff_members") or []
-                member = members[0] if members else {}
-                if not isinstance(member, dict):
-                    member = {}
-
-                staff_name = str(member.get("name") or "").strip()
-                if not staff_name:
-                    continue
-
-                return {
-                    "name": staff_name,
-                    "role": str(member.get("role") or "").strip(),
-                    "email": str(member.get("email") or "").strip(),
-                    "major": str(doc.get("major") or "").strip(),
-                }
+                    {"$limit": 1} # For now, keep returning best single match to satisfy existing API
+                ]
+                
+                cursor = coll.aggregate(pipeline)
+                docs = await cursor.to_list(length=1)
+                
+                if docs:
+                    doc = docs[0]
+                    return {
+                        "name": str(doc.get("name") or "").strip(),
+                        "role": str(doc.get("role") or "").strip(),
+                        "email": str(doc.get("email") or "").strip(),
+                        "major": str(doc.get("major") or "").strip(),
+                        "profile_url": str(doc.get("profile_url") or "").strip()
+                    }
         except Exception as e:
             print(f"Staff lookup error: {e}")
 

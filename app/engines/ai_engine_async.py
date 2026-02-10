@@ -182,7 +182,12 @@ Rules:
 3. If question is about UCSI/campus/hostel/fees/programme/staff/schedule/personal student data,
    set needs_context=true and provide short search_term.
 4. If question is generic world knowledge, set needs_context=false.
-5. CLICKABLE LINKS: If Context contains "Url:" or "profile_url:", you MUST include the link in Markdown format [상세 보기](URL) at the end of the response.
+5. CLICKABLE LINKS: 
+   - If Context contains "Url:" or "profile_url:", you MUST include the link in Markdown format [상세 보기](URL) at the end of YOUR response.
+   - If the response is in Korean, use exactly "[상세 보기](URL)".
+   - If multiple URLs are present, list them clearly with descriptions or at the end of relevant points.
+   - Example: "...정보는 여기서 확인할 수 있습니다. [상세 보기](https://example.com)"
+6. ABSOLUTELY NO PLACEHOLDERS: NEVER use [상세 보기](URL) if no URL is provided in Context.
 """
 
         # Resilience Checks
