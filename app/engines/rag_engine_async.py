@@ -237,6 +237,47 @@ class AsyncRAGEngine:
             file_path,
         )
 
+    async def get_index_info(self) -> Dict[str, Any]:
+        """Get information about the current FAISS index."""
+        if not _sync_rag_engine.enabled:
+            return {
+                "enabled": False,
+                "document_count": 0,
+                "index_loaded": False,
+                "model_name": None,
+                "dimension": 0,
+            }
+
+        index = _sync_rag_engine.index
+        metadata = _sync_rag_engine.metadata
+
+        # Count documents by source type
+        source_counts: Dict[str, int] = {}
+        for item in metadata:
+            if isinstance(item, dict):
+                source = str(item.get("source") or "unknown")
+                if source.startswith("MongoDB:"):
+                    key = "mongodb"
+                elif source.endswith(".pdf"):
+                    key = "pdf"
+                elif source.endswith(".txt"):
+                    key = "txt"
+                elif source.endswith(".csv"):
+                    key = "csv"
+                else:
+                    key = "other"
+                source_counts[key] = source_counts.get(key, 0) + 1
+
+        return {
+            "enabled": True,
+            "document_count": len(metadata),
+            "index_loaded": index is not None,
+            "index_size": getattr(index, "ntotal", 0) if index else 0,
+            "model_name": _sync_rag_engine.model_name,
+            "dimension": _sync_rag_engine.dimension,
+            "source_breakdown": source_counts,
+        }
+
 
 # Singleton
 rag_engine_async = AsyncRAGEngine()

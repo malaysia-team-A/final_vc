@@ -203,6 +203,39 @@ class AsyncAIEngine:
         if not history_items:
             return ""
 
+        # If conversation is long, summarize older turns
+        total_items = len(history_items)
+        if total_items > limit:
+            older_items = history_items[:-limit]
+            recent_items = history_items[-limit:]
+
+            # Create summary of older turns
+            topics = set()
+            for item in older_items:
+                content = self._extract_turn_text(item.get("content"))
+                if content:
+                    # Extract key topics from content
+                    for keyword in ["hostel", "programme", "fee", "staff", "facility", "schedule", "gpa", "grade"]:
+                        if keyword in content.lower():
+                            topics.add(keyword)
+
+            summary_line = ""
+            if topics:
+                summary_line = f"[Earlier discussion about: {', '.join(sorted(topics))}]\n"
+
+            lines: List[str] = []
+            if summary_line:
+                lines.append(summary_line)
+
+            for item in recent_items:
+                role = str(item.get("role") or "").strip().lower()
+                content = self._extract_turn_text(item.get("content"))
+                if not content:
+                    continue
+                speaker = "User" if role == "user" else "Assistant"
+                lines.append(f"{speaker}: {content}")
+            return "\n".join(lines)
+
         lines: List[str] = []
         for item in history_items[-max(1, int(limit)):]:
             role = str(item.get("role") or "").strip().lower()
@@ -477,21 +510,42 @@ Rules:
                     "- Follow this policy unless it conflicts with factual grounding.\n"
                 )
 
-        prompt = f"""You are UCSI Buddy.
-Context: {context_text}
-Conversation:
-{conversation_text or "(no previous turns)"}
-Question: {user_message}
+        prompt = f"""You are UCSI Buddy, a helpful AI assistant for UCSI University students and prospective students.
+
+## Context (Database Information)
+{context_text if context_text else "(No specific data provided)"}
+
+## Conversation History
+{conversation_text or "(First message in conversation)"}
+
+## Current Question
+{user_message}
+
+## Response Format
 Output JSON: {{ "text": "...", "suggestions": [], "needs_context": bool, "search_term": string|null }}
-Rules:
-1. Only mention missing information when Context explicitly has [NO_RELEVANT_DATA_FOUND].
-2. Language: {lang_instruct}
-3. If question is about UCSI/campus/hostel/fees/programme/staff/schedule/personal student data,
-   set needs_context=true and provide short search_term.
-4. If question is generic world knowledge, set needs_context=false.
-5. Use Conversation to resolve follow-up references (pronouns, "one/that/same", short elliptical requests).
-6. If user asks to narrow or choose from prior options, use prior options from Conversation.
-7. Ask a clarification question only when Conversation is insufficient to disambiguate.
+
+## Response Guidelines
+1. **Grounding**: Base your answer ONLY on the Context provided. Never invent information.
+2. **Missing Data**: Only say information is unavailable when Context explicitly shows [NO_RELEVANT_DATA_FOUND].
+3. **Language**: {lang_instruct}
+4. **Tone**: Be friendly, helpful, and professional. Use natural conversational language.
+5. **Brevity**: Keep responses concise but complete. Avoid unnecessary repetition.
+6. **Formatting**: Use bullet points or numbered lists for multiple items. Break long responses into paragraphs.
+
+## Context Rules
+- UCSI/campus/hostel/fees/programme/staff/schedule/personal data → needs_context=true, provide search_term
+- Generic world knowledge questions → needs_context=false
+
+## Conversation Continuity
+- Resolve pronouns and references ("it", "that", "the same one", "그거", "그 전에") using Conversation History
+- When user narrows down from previous options, use prior context
+- Only ask for clarification when absolutely necessary
+
+## Quality Checks
+- Verify numbers and facts match the Context exactly
+- Don't add extra details not in the Context
+- If Context has confidence scores, prefer higher confidence information
+
 {scope_rule}
 {rlhf_rule}
 """
