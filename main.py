@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,8 +9,16 @@ from fastapi.responses import FileResponse
 from app.engines.db_engine_async import db_engine_async
 from app.engines.rag_engine_async import rag_engine_async
 import app.api.auth as auth
-import app.api.chat as chat
 import app.api.admin as admin
+
+# Use new refactored chat module if USE_CHAT_V2=true
+USE_CHAT_V2 = os.getenv("USE_CHAT_V2", "false").lower() in ("true", "1", "yes")
+if USE_CHAT_V2:
+    import app.api.chat_v2 as chat
+    print("[Main] Using chat_v2 (refactored with hybrid classifier)")
+else:
+    import app.api.chat as chat
+    print("[Main] Using chat (original)")
 
 
 @asynccontextmanager

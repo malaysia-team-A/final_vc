@@ -80,15 +80,27 @@ except Exception as e:
     print(f"[FAIL] app.api routers: {e}")
 
 try:
-    from app.engines.ai_engine import AIEngine
-    print("[OK] app.engines.ai_engine")
+    from app.engines.ai_engine_async import ai_engine_async
+    print("[OK] app.engines.ai_engine_async")
 except Exception as e:
-    print(f"[FAIL] app.engines.ai_engine: {e}")
+    print(f"[FAIL] app.engines.ai_engine_async: {e}")
 
 try:
-    from app.engines.db_engine import DatabaseEngine
-    print("[OK] app.engines.db_engine")
+    from app.engines.db_engine_async import db_engine_async
+    print("[OK] app.engines.db_engine_async")
 except Exception as e:
-    print(f"[FAIL] app.engines.db_engine: {e}")
+    print(f"[FAIL] app.engines.db_engine_async: {e}")
+
+try:
+    from app.engines.rag_engine_async import rag_engine_async
+    print("[OK] app.engines.rag_engine_async")
+except Exception as e:
+    print(f"[FAIL] app.engines.rag_engine_async: {e}")
+
+try:
+    from app.engines.semantic_router_async import semantic_router_async
+    print("[OK] app.engines.semantic_router_async")
+except Exception as e:
+    print(f"[FAIL] app.engines.semantic_router_async: {e}")
 
 print("\n--- Verification Complete ---")

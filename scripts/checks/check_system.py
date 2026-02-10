@@ -29,11 +29,13 @@ def check_integrity():
     # 2. Key File Check
     required_files = [
         "main.py",
-        "app/engines/ai_engine.py",
-        "app/engines/data_engine.py",
+        "app/engines/ai_engine_async.py",
+        "app/engines/db_engine_async.py",
+        "app/engines/rag_engine_async.py",
+        "app/engines/semantic_router_async.py",
         "app/engines/rag_engine.py",
         "app/utils/auth_utils.py",
-        "data/feedback_log.json"
+        ".env"
     ]
     for f in required_files:
         if os.path.exists(f):
@@ -44,10 +46,12 @@ def check_integrity():
     # 3. Import Check
     print("\n[INFO] Testing Imports...")
     try:
-        from app.engines.data_engine import DataEngine
-        from app.engines.ai_engine import AIEngine
+        from app.engines.ai_engine_async import ai_engine_async
+        from app.engines.db_engine_async import db_engine_async
+        from app.engines.rag_engine_async import rag_engine_async
+        from app.engines.semantic_router_async import semantic_router_async
         from app.utils import auth_utils
-        print("[PASS] Core modules imported successfully.")
+        print("[PASS] Core async modules imported successfully.")
     except Exception as e:
         print(f"[FAIL] Import error: {e}")
         return

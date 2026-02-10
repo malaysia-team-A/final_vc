@@ -47,6 +47,79 @@ _QUERY_STOPWORDS = {
     "부탁",
 }
 
+FEEDBACK_COLLECTION = "Feedback"
+LEGACY_FEEDBACK_COLLECTION = "feedbacks"
+UNANSWERED_COLLECTION = "unanswered"
+LEARNED_QA_COLLECTION = "LearnedQA"
+BAD_QA_COLLECTION = "BadQA"
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = str(os.getenv(name, "true" if default else "false")).strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+USE_LEGACY_FEEDBACK_COLLECTION = _env_bool("USE_LEGACY_FEEDBACK_COLLECTION", False)
+USE_LEGACY_QA_COLLECTIONS = _env_bool("USE_LEGACY_QA_COLLECTIONS", False)
+
+
+def _feedback_collections() -> List[str]:
+    collections = [FEEDBACK_COLLECTION]
+    if USE_LEGACY_FEEDBACK_COLLECTION:
+        collections.append(LEGACY_FEEDBACK_COLLECTION)
+    return collections
+
+_FEEDBACK_POLICY_TAG_RULES = {
+    "no_hallucination": [
+        "halluc",
+        "fabricat",
+        "made up",
+        "invent",
+        "없는",
+        "지어",
+        "추측",
+        "가짜",
+    ],
+    "grounded_to_db": [
+        "db",
+        "database",
+        "source",
+        "citation",
+        "근거",
+        "출처",
+        "데이터",
+        "정확",
+    ],
+    "verify_numbers": [
+        "wrong number",
+        "incorrect number",
+        "price",
+        "fee",
+        "tuition",
+        "금액",
+        "숫자",
+        "비용",
+        "학비",
+    ],
+    "more_specific": [
+        "generic",
+        "too broad",
+        "vague",
+        "모호",
+        "구체",
+        "자세",
+        "too generic",
+    ],
+    "concise_format": [
+        "too long",
+        "verbose",
+        "길어",
+        "장황",
+        "요약",
+        "간단",
+    ],
+}
+
 
 def _normalize_query_text(query: str) -> str:
     text = str(query or "").strip().lower()
@@ -95,6 +168,17 @@ def _token_overlap_score(query_tokens: List[str], candidate_tokens: List[str]) -
     if intersection >= 3:
         score += 0.08
     return min(score, 1.0)
+
+
+def _derive_feedback_policy_tags(comment: Any, ai_response: Any) -> List[str]:
+    text = f"{str(comment or '')} {str(ai_response or '')}".strip().lower()
+    if not text:
+        return []
+    tags: List[str] = []
+    for tag, keywords in _FEEDBACK_POLICY_TAG_RULES.items():
+        if any(k in text for k in keywords):
+            tags.append(tag)
+    return tags
 
 
 class AsyncDatabaseEngine:
@@ -147,10 +231,58 @@ class AsyncDatabaseEngine:
                     self.student_collection_name = target
             except Exception as e:
                 print(f"Warning: Could not auto-detect collections: {e}")
+
+            await self._ensure_runtime_indexes()
             
         except Exception as e:
             print(f"[AsyncDB][ERROR] Database connection failed: {e}")
-    
+
+    async def _ensure_runtime_indexes(self) -> None:
+        """Create frequently used indexes for stable runtime latency."""
+        if self.db is None:
+            return
+        for coll_name in _feedback_collections():
+            try:
+                await self.db[coll_name].create_index(
+                    [("query_norm", 1), ("rating", 1), ("timestamp", -1)],
+                    name=f"{coll_name.lower()}_query_rating_ts",
+                )
+                await self.db[coll_name].create_index(
+                    [("timestamp", -1)],
+                    name=f"{coll_name.lower()}_timestamp_desc",
+                )
+                await self.db[coll_name].create_index(
+                    [("reward", 1), ("timestamp", -1)],
+                    name=f"{coll_name.lower()}_reward_ts",
+                )
+            except Exception as e:
+                print(f"{coll_name} index ensure error: {e}")
+
+        try:
+            await self.db[UNANSWERED_COLLECTION].create_index(
+                [("timestamp", -1)],
+                name="unanswered_timestamp_desc",
+            )
+        except Exception as e:
+            print(f"Unanswered index ensure error: {e}")
+
+        if USE_LEGACY_QA_COLLECTIONS:
+            try:
+                await self.db[LEARNED_QA_COLLECTION].create_index(
+                    [("query_norm", 1)],
+                    name="learnedqa_query_norm",
+                )
+            except Exception as e:
+                print(f"LearnedQA index ensure error: {e}")
+
+            try:
+                await self.db[BAD_QA_COLLECTION].create_index(
+                    [("query_norm", 1)],
+                    name="badqa_query_norm",
+                )
+            except Exception as e:
+                print(f"BadQA index ensure error: {e}")
+
     @property
     def student_coll(self):
         if self.db is not None:
@@ -163,6 +295,37 @@ class AsyncDatabaseEngine:
             "query_norm": query_norm,
             "query_tokens": _extract_query_tokens(query_norm),
         }
+
+    def _compose_rlhf_policy_hint(self, policy: Dict[str, Any]) -> Optional[str]:
+        if not isinstance(policy, dict) or not policy.get("has_signal"):
+            return None
+
+        instructions: List[str] = []
+        if policy.get("strict_grounding"):
+            instructions.append("Use only verified context; if confidence is low, answer no-data.")
+
+        for tag in policy.get("top_tags", [])[:3]:
+            if tag == "no_hallucination":
+                instructions.append("Avoid speculative or fabricated claims.")
+            elif tag == "grounded_to_db":
+                instructions.append("Anchor claims to retrieved DB evidence.")
+            elif tag == "verify_numbers":
+                instructions.append("Double-check all numbers, fees, and dates before answering.")
+            elif tag == "more_specific":
+                instructions.append("Be concrete and specific; avoid generic statements.")
+            elif tag == "concise_format":
+                instructions.append("Keep responses concise and structured.")
+
+        avoid = [str(x).strip() for x in (policy.get("avoid_responses") or []) if str(x).strip()]
+        if avoid:
+            instructions.append(
+                "Do not repeat these downrated styles: "
+                + " | ".join(avoid[:2])
+            )
+
+        if not instructions:
+            return None
+        return "RLHF policy hint:\n- " + "\n- ".join(instructions[:6])
 
     async def get_student_by_number(self, student_number: str) -> Optional[Dict]:
         if self.student_coll is None: return None
@@ -272,9 +435,44 @@ class AsyncDatabaseEngine:
         return None
 
     async def save_feedback(self, feedback_data: Dict) -> bool:
-        if self.db is None: return False
+        if self.db is None:
+            return False
         try:
-            await self.db.Feedback.insert_one(feedback_data)
+            user_message = str(feedback_data.get("user_message") or "").strip()
+            ai_response = str(feedback_data.get("ai_response") or "").strip()
+            if not user_message or not ai_response:
+                return False
+
+            rating = str(feedback_data.get("rating") or "").strip().lower()
+            if rating not in {"positive", "negative"}:
+                return False
+
+            session_id = str(
+                feedback_data.get("session_id")
+                or feedback_data.get("conversation_id")
+                or "guest_session"
+            ).strip() or "guest_session"
+
+            comment = feedback_data.get("comment")
+            comment_norm = None if comment is None else str(comment).strip() or None
+            timestamp = str(feedback_data.get("timestamp") or datetime.now().isoformat())
+            meta = self.query_metadata(user_message)
+            policy_tags = _derive_feedback_policy_tags(comment_norm, ai_response)
+            reward = 1.0 if rating == "positive" else -1.0
+
+            payload = {
+                "user_message": user_message,
+                "ai_response": ai_response,
+                "rating": rating,
+                "reward": reward,
+                "comment": comment_norm,
+                "session_id": session_id,
+                "timestamp": timestamp,
+                "query_norm": meta["query_norm"],
+                "query_tokens": meta["query_tokens"],
+                "policy_tags": policy_tags,
+            }
+            await self.db[FEEDBACK_COLLECTION].insert_one(payload)
             return True
         except Exception as e:
             print(f"Feedback save error: {e}")
@@ -284,31 +482,58 @@ class AsyncDatabaseEngine:
         if self.db is None:
             return False
         try:
-            await self.db.unanswered.insert_one(question_data)
+            await self.db[UNANSWERED_COLLECTION].insert_one(question_data)
             return True
         except Exception as e:
             print(f"Unanswered log error: {e}")
             return False
 
     async def save_learned_response(self, query: str, answer: str) -> bool:
-        if self.db is None: return False
+        if self.db is None:
+            return False
         try:
             meta = self.query_metadata(query)
             query_norm = meta["query_norm"] or str(query or "").strip().lower()
-            await self.db.LearnedQA.update_one(
-                {"query_norm": query_norm},
+            now = datetime.now()
+
+            # Canonical memory path: keep learned signal in Feedback.
+            await self.db[FEEDBACK_COLLECTION].update_one(
+                {"query_norm": query_norm, "rating": "positive"},
                 {
                     "$set": {
-                        "query": query_norm,
+                        "user_message": str(query or "").strip(),
+                        "ai_response": str(answer or "").strip(),
+                        "rating": "positive",
+                        "reward": 1.0,
                         "query_norm": query_norm,
                         "query_tokens": meta["query_tokens"],
-                        "answer": answer,
-                        "timestamp": datetime.now(),
-                        "source": "user_feedback",
-                    }
+                        "memory_source": "learned_positive_feedback",
+                        "timestamp": now,
+                    },
+                    "$setOnInsert": {
+                        "session_id": "system_memory",
+                        "comment": "Auto-promoted from positive feedback",
+                    },
                 },
-                upsert=True
+                upsert=True,
             )
+
+            # Optional legacy compatibility write.
+            if USE_LEGACY_QA_COLLECTIONS:
+                await self.db[LEARNED_QA_COLLECTION].update_one(
+                    {"query_norm": query_norm},
+                    {
+                        "$set": {
+                            "query": query_norm,
+                            "query_norm": query_norm,
+                            "query_tokens": meta["query_tokens"],
+                            "answer": str(answer or "").strip(),
+                            "timestamp": now,
+                            "source": "user_feedback",
+                        }
+                    },
+                    upsert=True,
+                )
             return True
         except Exception as e:
             print(f"Learned response save error: {e}")
@@ -317,70 +542,125 @@ class AsyncDatabaseEngine:
     async def search_learned_response(self, query: str) -> Optional[str]:
         if self.db is None:
             return None
+
         meta = self.query_metadata(query)
         q_norm = meta["query_norm"]
+        q_raw = str(query or "").strip().lower()
         q_tokens = meta["query_tokens"]
         if not q_norm:
             return None
-        try:
-            doc = await self.db.LearnedQA.find_one(
-                {"$or": [{"query_norm": q_norm}, {"query": q_norm}]},
-                {"_id": 0, "answer": 1},
-            )
-            if not doc:
-                # Fuzzy pass: score recent learned answers by token overlap.
-                cursor = self.db.LearnedQA.find(
-                    {},
-                    {"_id": 0, "answer": 1, "query_norm": 1, "query_tokens": 1},
-                ).sort("timestamp", -1).limit(120)
-                candidates = await cursor.to_list(length=120)
-                best_answer = None
-                best_score = 0.0
-                for item in candidates:
-                    answer = str(item.get("answer") or "").strip()
-                    if not answer:
-                        continue
-                    candidate_norm = str(item.get("query_norm") or "").strip().lower()
-                    candidate_tokens = item.get("query_tokens")
-                    if not isinstance(candidate_tokens, list):
-                        candidate_tokens = _extract_query_tokens(candidate_norm)
-                    score = _token_overlap_score(q_tokens, candidate_tokens)
-                    if candidate_norm and (q_norm in candidate_norm or candidate_norm in q_norm):
-                        score = max(score, 0.9 if min(len(q_norm), len(candidate_norm)) >= 8 else 0.78)
-                    if score > best_score:
-                        best_score = score
-                        best_answer = answer
 
-                threshold = 0.86 if len(q_tokens) <= 2 else 0.62
-                if best_answer and best_score >= threshold:
-                    return best_answer
-                return None
-            answer = str(doc.get("answer") or "").strip()
-            return answer or None
+        try:
+            # 1) Canonical lookup from Feedback positive samples.
+            escaped = re.escape(q_raw.rstrip("?.!"))
+            exact_or = [{"query_norm": q_norm}]
+            if q_raw:
+                exact_or.append({"user_message": {"$regex": f"^{escaped}[?.!]*$", "$options": "i"}})
+
+            docs = await self.db[FEEDBACK_COLLECTION].find(
+                {"rating": "positive", "$or": exact_or},
+                {"_id": 0, "ai_response": 1, "timestamp": 1},
+            ).sort("timestamp", -1).limit(1).to_list(length=1)
+            if docs:
+                answer = str((docs[0] or {}).get("ai_response") or "").strip()
+                if answer:
+                    return answer
+
+            # 2) Fuzzy positive feedback matching.
+            feedback_rows = await self.db[FEEDBACK_COLLECTION].find(
+                {"rating": "positive"},
+                {"_id": 0, "ai_response": 1, "query_norm": 1, "query_tokens": 1, "user_message": 1},
+            ).sort("timestamp", -1).limit(160).to_list(length=160)
+
+            best_answer = None
+            best_score = 0.0
+            for row in feedback_rows:
+                answer = str(row.get("ai_response") or "").strip()
+                if not answer:
+                    continue
+                candidate_norm = str(row.get("query_norm") or row.get("user_message") or "").strip().lower()
+                candidate_tokens = row.get("query_tokens")
+                if not isinstance(candidate_tokens, list):
+                    candidate_tokens = _extract_query_tokens(candidate_norm)
+
+                score = _token_overlap_score(q_tokens, candidate_tokens)
+                if candidate_norm and (q_norm in candidate_norm or candidate_norm in q_norm):
+                    score = max(score, 0.90 if min(len(q_norm), len(candidate_norm)) >= 8 else 0.78)
+                if score > best_score:
+                    best_score = score
+                    best_answer = answer
+
+            threshold = 0.86 if len(q_tokens) <= 2 else 0.62
+            if best_answer and best_score >= threshold:
+                return best_answer
+
+            # 3) Optional legacy fallback (read-only compatibility).
+            if USE_LEGACY_QA_COLLECTIONS:
+                doc = await self.db[LEARNED_QA_COLLECTION].find_one(
+                    {"$or": [{"query_norm": q_norm}, {"query": q_norm}, {"query": q_raw}]},
+                    {"_id": 0, "answer": 1},
+                )
+                if not doc and q_raw:
+                    legacy_escaped = re.escape(q_raw.rstrip("?.!"))
+                    if legacy_escaped:
+                        doc = await self.db[LEARNED_QA_COLLECTION].find_one(
+                            {"query": {"$regex": f"^{legacy_escaped}[?.!]*$", "$options": "i"}},
+                            {"_id": 0, "answer": 1},
+                        )
+                if doc:
+                    answer = str(doc.get("answer") or "").strip()
+                    if answer:
+                        return answer
+            return None
         except Exception as e:
             print(f"Learned response search error: {e}")
             return None
 
     async def save_bad_response(self, query: str, bad_answer: str, reason: str = "") -> bool:
-        if self.db is None: return False
+        if self.db is None:
+            return False
         try:
             meta = self.query_metadata(query)
             query_norm = meta["query_norm"] or str(query or "").strip().lower()
-            await self.db.BadQA.update_one(
-                {"query_norm": query_norm},
+            now = datetime.now()
+
+            # Canonical memory path: keep negative signal in Feedback.
+            await self.db[FEEDBACK_COLLECTION].update_one(
+                {"query_norm": query_norm, "rating": "negative"},
                 {
                     "$set": {
-                        "query": query_norm,
+                        "user_message": str(query or "").strip(),
+                        "ai_response": str(bad_answer or "").strip(),
+                        "rating": "negative",
+                        "reward": -1.0,
                         "query_norm": query_norm,
                         "query_tokens": meta["query_tokens"],
-                        "bad_answer": bad_answer,
-                        "reason": reason,
-                        "timestamp": datetime.now(),
+                        "comment": str(reason or "").strip() or "User marked as incorrect",
+                        "memory_source": "negative_feedback_guard",
+                        "timestamp": now,
                     },
-                    "$inc": {"count": 1},
+                    "$setOnInsert": {"session_id": "system_memory"},
                 },
-                upsert=True
+                upsert=True,
             )
+
+            # Optional legacy compatibility write.
+            if USE_LEGACY_QA_COLLECTIONS:
+                await self.db[BAD_QA_COLLECTION].update_one(
+                    {"query_norm": query_norm},
+                    {
+                        "$set": {
+                            "query": query_norm,
+                            "query_norm": query_norm,
+                            "query_tokens": meta["query_tokens"],
+                            "bad_answer": str(bad_answer or "").strip(),
+                            "reason": str(reason or "").strip(),
+                            "timestamp": now,
+                        },
+                        "$inc": {"count": 1},
+                    },
+                    upsert=True,
+                )
             return True
         except Exception as e:
             print(f"Bad response save error: {e}")
@@ -395,62 +675,171 @@ class AsyncDatabaseEngine:
         if not q_norm:
             return False
         try:
-            bad_exact = await self.db.BadQA.find_one(
-                {"$or": [{"query_norm": q_norm}, {"query": q_norm}]},
-                {"_id": 1},
-            )
-            if bad_exact:
-                return True
-            feedback_hit = await self.db.Feedback.find_one(
-                {
-                    "rating": "negative",
-                    "$or": [
-                        {"query_norm": q_norm},
-                        {"user_message": {"$regex": f"^{re.escape(str(query or '').strip())}$", "$options": "i"}},
-                    ],
-                },
-                {"_id": 1},
-            )
-            if feedback_hit:
-                return True
-
-            if not q_tokens:
-                return False
-
-            bad_rows = await self.db.BadQA.find(
-                {},
-                {"_id": 0, "query_norm": 1, "query_tokens": 1},
-            ).sort("timestamp", -1).limit(120).to_list(length=120)
-            for row in bad_rows:
-                candidate_norm = str(row.get("query_norm") or "").strip().lower()
-                candidate_tokens = row.get("query_tokens")
-                if not isinstance(candidate_tokens, list):
-                    candidate_tokens = _extract_query_tokens(candidate_norm)
-                score = _token_overlap_score(q_tokens, candidate_tokens)
-                if candidate_norm and (q_norm in candidate_norm or candidate_norm in q_norm):
-                    score = max(score, 0.9 if min(len(q_norm), len(candidate_norm)) >= 8 else 0.76)
-                if score >= 0.66:
+            query_escaped = re.escape(str(query or "").strip())
+            for feedback_coll in _feedback_collections():
+                feedback_hit = await self.db[feedback_coll].find_one(
+                    {
+                        "rating": "negative",
+                        "$or": [
+                            {"query_norm": q_norm},
+                            {"user_message": {"$regex": f"^{query_escaped}$", "$options": "i"}},
+                        ],
+                    },
+                    {"_id": 1},
+                )
+                if feedback_hit:
                     return True
 
-            fb_rows = await self.db.Feedback.find(
-                {"rating": "negative"},
-                {"_id": 0, "query_norm": 1, "query_tokens": 1, "user_message": 1},
-            ).sort("timestamp", -1).limit(160).to_list(length=160)
-            for row in fb_rows:
-                candidate_norm = str(row.get("query_norm") or row.get("user_message") or "").strip().lower()
-                candidate_tokens = row.get("query_tokens")
-                if not isinstance(candidate_tokens, list):
-                    candidate_tokens = _extract_query_tokens(candidate_norm)
-                score = _token_overlap_score(q_tokens, candidate_tokens)
-                if candidate_norm and (q_norm in candidate_norm or candidate_norm in q_norm):
-                    score = max(score, 0.88 if min(len(q_norm), len(candidate_norm)) >= 8 else 0.74)
-                if score >= 0.7:
+            if q_tokens:
+                for feedback_coll in _feedback_collections():
+                    fb_rows = await self.db[feedback_coll].find(
+                        {"rating": "negative"},
+                        {"_id": 0, "query_norm": 1, "query_tokens": 1, "user_message": 1},
+                    ).sort("timestamp", -1).limit(200).to_list(length=200)
+                    for row in fb_rows:
+                        candidate_norm = str(row.get("query_norm") or row.get("user_message") or "").strip().lower()
+                        candidate_tokens = row.get("query_tokens")
+                        if not isinstance(candidate_tokens, list):
+                            candidate_tokens = _extract_query_tokens(candidate_norm)
+                        score = _token_overlap_score(q_tokens, candidate_tokens)
+                        if candidate_norm and (q_norm in candidate_norm or candidate_norm in q_norm):
+                            score = max(score, 0.88 if min(len(q_norm), len(candidate_norm)) >= 8 else 0.74)
+                        if score >= 0.70:
+                            return True
+
+            if USE_LEGACY_QA_COLLECTIONS:
+                bad_exact = await self.db[BAD_QA_COLLECTION].find_one(
+                    {"$or": [{"query_norm": q_norm}, {"query": q_norm}]},
+                    {"_id": 1},
+                )
+                if bad_exact:
                     return True
+
+                if q_tokens:
+                    bad_rows = await self.db[BAD_QA_COLLECTION].find(
+                        {},
+                        {"_id": 0, "query_norm": 1, "query_tokens": 1, "query": 1},
+                    ).sort("timestamp", -1).limit(120).to_list(length=120)
+                    for row in bad_rows:
+                        candidate_norm = str(row.get("query_norm") or row.get("query") or "").strip().lower()
+                        candidate_tokens = row.get("query_tokens")
+                        if not isinstance(candidate_tokens, list):
+                            candidate_tokens = _extract_query_tokens(candidate_norm)
+                        score = _token_overlap_score(q_tokens, candidate_tokens)
+                        if candidate_norm and (q_norm in candidate_norm or candidate_norm in q_norm):
+                            score = max(score, 0.90 if min(len(q_norm), len(candidate_norm)) >= 8 else 0.76)
+                        if score >= 0.66:
+                            return True
 
             return False
         except Exception as e:
             print(f"Bad response check error: {e}")
             return False
+
+    async def get_rlhf_policy(self, query: str, limit_per_collection: int = 180) -> Dict[str, Any]:
+        if self.db is None:
+            return {"has_signal": False}
+
+        meta = self.query_metadata(query)
+        q_norm = meta.get("query_norm", "")
+        q_tokens = meta.get("query_tokens", [])
+        if not q_norm:
+            return {"has_signal": False}
+
+        positive_weight = 0.0
+        negative_weight = 0.0
+        signal_count = 0
+        tag_weights: Dict[str, float] = {}
+        bad_examples: Dict[str, float] = {}
+        good_examples: Dict[str, float] = {}
+
+        for coll_name in _feedback_collections():
+            try:
+                rows = await self.db[coll_name].find(
+                    {},
+                    {
+                        "_id": 0,
+                        "rating": 1,
+                        "reward": 1,
+                        "user_message": 1,
+                        "ai_response": 1,
+                        "query_norm": 1,
+                        "query_tokens": 1,
+                        "policy_tags": 1,
+                        "comment": 1,
+                        "timestamp": 1,
+                    },
+                ).sort("timestamp", -1).limit(max(20, int(limit_per_collection))).to_list(length=max(20, int(limit_per_collection)))
+            except Exception:
+                continue
+
+            for row in rows:
+                rating = str(row.get("rating") or "").strip().lower()
+                if rating not in {"positive", "negative"}:
+                    continue
+
+                candidate_norm = str(row.get("query_norm") or row.get("user_message") or "").strip().lower()
+                candidate_tokens = row.get("query_tokens")
+                if not isinstance(candidate_tokens, list):
+                    candidate_tokens = _extract_query_tokens(candidate_norm)
+
+                score = _token_overlap_score(q_tokens, candidate_tokens)
+                if candidate_norm and (q_norm in candidate_norm or candidate_norm in q_norm):
+                    score = max(score, 0.88 if min(len(q_norm), len(candidate_norm)) >= 8 else 0.74)
+                if score < 0.35:
+                    continue
+
+                weight = max(0.15, min(score, 1.0))
+                signal_count += 1
+                if rating == "positive":
+                    positive_weight += weight
+                else:
+                    negative_weight += weight
+
+                tags = row.get("policy_tags")
+                if not isinstance(tags, list) or not tags:
+                    tags = _derive_feedback_policy_tags(row.get("comment"), row.get("ai_response"))
+                for tag in tags:
+                    t = str(tag).strip()
+                    if not t:
+                        continue
+                    tag_weights[t] = tag_weights.get(t, 0.0) + weight
+
+                ai_response = str(row.get("ai_response") or "").strip()
+                if ai_response:
+                    if rating == "negative" and score >= 0.55:
+                        bad_examples[ai_response] = max(weight, bad_examples.get(ai_response, 0.0))
+                    if rating == "positive" and score >= 0.62:
+                        good_examples[ai_response] = max(weight, good_examples.get(ai_response, 0.0))
+
+        if signal_count == 0:
+            return {"has_signal": False}
+
+        top_tags = [k for k, _ in sorted(tag_weights.items(), key=lambda kv: kv[1], reverse=True)[:4]]
+        avoid_responses = [k for k, _ in sorted(bad_examples.items(), key=lambda kv: kv[1], reverse=True)[:3]]
+        preferred_responses = [k for k, _ in sorted(good_examples.items(), key=lambda kv: kv[1], reverse=True)[:2]]
+
+        strict_grounding = (
+            signal_count >= 2
+            and (
+                negative_weight >= (positive_weight * 1.10)
+                or "no_hallucination" in top_tags
+                or "grounded_to_db" in top_tags
+            )
+        )
+
+        policy = {
+            "has_signal": True,
+            "signal_count": signal_count,
+            "positive_weight": round(float(positive_weight), 4),
+            "negative_weight": round(float(negative_weight), 4),
+            "strict_grounding": bool(strict_grounding),
+            "top_tags": top_tags,
+            "avoid_responses": avoid_responses,
+            "preferred_responses": preferred_responses,
+        }
+        policy["policy_hint"] = self._compose_rlhf_policy_hint(policy)
+        return policy
 
     async def get_student_stats(self) -> Dict:
         """Aggregate high-level student statistics."""

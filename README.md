@@ -47,3 +47,9 @@ python scripts/qa/strict_qa_suite.py --mode full
 python scripts/qa/stress_test_runner.py
 ```
 
+## 라우팅(분기) 방식
+- 기본 정책: `semantic router` 우선 + `rule` 최소 폴백
+- Semantic router는 MongoDB 컬렉션(`semantic_intents`)의 임베딩 예시를 기준으로 질의 의도를 분류합니다.
+- 고신뢰 의도는 분기에 바로 반영하고, 저신뢰(`SEMANTIC_ROUTER_MIN_CONFIDENCE`)는 기존 룰/LLM 흐름으로 폴백합니다.
+- 보안 경로(로그인 필요, GPA/성적 접근)는 룰 검증을 유지합니다.
+

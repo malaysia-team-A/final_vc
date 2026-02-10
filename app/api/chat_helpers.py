@@ -182,12 +182,19 @@ def _extract_person_candidate(message: str) -> Optional[str]:
 
     patterns = [
         r"^\s*who is\s+(?P<name>.+?)\s*\??\s*$",
+        r"^\s*who's\s+(?P<name>.+?)\s*\??\s*$",
         r"^\s*do you know\s+(?P<name>.+?)\s*\??\s*$",
         r"^\s*tell me about\s+(?P<name>.+?)\s*\??\s*$",
+        r"^\s*tell me more about\s+(?P<name>.+?)\s*\??\s*$",
         r"^\s*what do you know about\s+(?P<name>.+?)\s*\??\s*$",
-        r"^\s*(?P<name>[A-Za-z0-9가-힣.\-\'\s]+?)\s*(?:에 대해|에대해)\s*(?:알려줘|말해줘)\s*\??\s*$",
-        r"^\s*(?P<name>[A-Za-z0-9가-힣.\-\'\s]+?)\s*(?:누구야|누구예요)\s*\??\s*$",
-        r"^\s*(?P<name>[A-Za-z0-9가-힣.\-\'\s]+?)\s*(?:알아|알고 있어)\s*\??\s*$",
+        r"^\s*(?P<name>[A-Za-z0-9가-힣.\-\'\s]+?)\s*(?:에 대해|에대해|에 대해서|에대해서|관련해서|에 관한)\s*(?:정보를\s*)?(?:알려줘|알려줄래|알려주세요|말해줘|말해줄래|설명해줘|소개해줘)?\s*\??\s*$",
+        r"^\s*(?P<name>[A-Za-z0-9가-힣.\-\'\s]+?)\s*(?:누구야|누구예요|누군가요)\s*\??\s*$",
+        r"^\s*(?P<name>[A-Za-z0-9가-힣.\-\'\s]+?)\s*(?:알아|알고 있어|알고 있니)\s*\??\s*$",
+    ]
+
+    fuzzy_patterns = [
+        r"(?:about|regarding|on)\s+(?P<name>[A-Za-z][A-Za-z0-9 .'\-]{1,60})",
+        r"(?P<name>[A-Za-z0-9가-힣.\-\'\s]{2,60})\s*(?:이라는|라는)\s*(?:사람|인물)?\s*(?:에 대해|에 대해서|관련해서|에 관한)",
     ]
 
     candidate = None
@@ -198,18 +205,30 @@ def _extract_person_candidate(message: str) -> Optional[str]:
             break
 
     if not candidate:
+        for pattern in fuzzy_patterns:
+            m = re.search(pattern, text, flags=re.IGNORECASE)
+            if m:
+                candidate = m.group("name")
+                break
+    if not candidate:
         return None
 
     candidate = re.sub(r"\s+", " ", str(candidate).strip())
     candidate = candidate.strip(" \t\r\n?!.,\"'`")
     candidate = re.sub(r"^(the|a|an)\s+", "", candidate, flags=re.IGNORECASE)
+    candidate = re.sub(r"\s*(?:이라는|라는)\s*(?:사람|인물)?$", "", candidate, flags=re.IGNORECASE)
+    candidate = re.sub(r"\s*(?:please|pls)$", "", candidate, flags=re.IGNORECASE)
+    candidate = re.sub(r"(?:은|는|이|가|을|를|와|과|의)$", "", candidate)
+    candidate = re.sub(r"\s+", " ", candidate).strip()
     if len(candidate) < 2:
         return None
-    if len(candidate.split()) > 8:
+    if len(candidate.split()) > 10:
         return None
 
     lowered = candidate.lower()
     reject_fragments = {
+        "ucsi",
+        "university",
         "hostel",
         "tuition",
         "fee",
@@ -217,12 +236,29 @@ def _extract_person_candidate(message: str) -> Optional[str]:
         "block",
         "building",
         "campus",
+        "faculty",
+        "department",
         "program",
         "programme",
         "schedule",
         "gpa",
         "cgpa",
         "student id",
+        "기숙사",
+        "등록금",
+        "전공",
+        "학과",
+        "학부",
+        "프로그램",
+        "시설",
+        "도서관",
+        "일정",
+        "입학",
+        "장학금",
+        "캠퍼스",
+        "교과",
+        "학점",
+        "성적",
     }
     if any(fragment in lowered for fragment in reject_fragments):
         return None
@@ -373,6 +409,24 @@ def _compose_no_data_response() -> str:
         "Please ask with specific keywords (programme name, block, intake, staff role), "
         "or request a data update."
     )
+
+
+def _is_document_limited_answer(text: str) -> bool:
+    value = str(text or "").lower()
+    if not value:
+        return False
+    patterns = [
+        "provided document",
+        "provided documents",
+        "knowledge base",
+        "cannot find",
+        "could not find",
+        "in our database",
+        "제공된 문서",
+        "찾을 수 없습니다",
+        "데이터베이스에서",
+    ]
+    return any(token in value for token in patterns)
 
 
 def _detect_language(text: str) -> str:
@@ -866,9 +920,11 @@ def _is_redundant_person_suggestion(
 
     repetitive_patterns = [
         rf"^who is\s+{re.escape(c)}\??$",
+        rf"^who's\s+{re.escape(c)}\??$",
         rf"^tell me about\s+{re.escape(c)}\??$",
-        rf"^{re.escape(c)}\s*(?:누구야|누구예요)\??$",
-        rf"^{re.escape(c)}\s*(?:에 대해|에대해)\s*(?:알려줘|말해줘)\??$",
+        rf"^tell me more about\s+{re.escape(c)}\??$",
+        rf"^{re.escape(c)}\s*(?:누구야|누구예요|누군가요)\??$",
+        rf"^{re.escape(c)}\s*(?:에 대해|에대해|에 대해서|에대해서|관련해서|에 관한)\s*(?:정보를\s*)?(?:알려줘|알려줄래|알려주세요|말해줘|말해줄래|설명해줘|소개해줘)?\??$",
     ]
     return any(re.match(p, s, flags=re.IGNORECASE) for p in repetitive_patterns)
 

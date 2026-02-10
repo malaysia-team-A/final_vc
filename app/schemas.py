@@ -38,6 +38,10 @@ class FeedbackRequest(BaseModel):
     ai_response: str = Field(validation_alias=AliasChoices("ai_response", "answer"))
     rating: str  # 'positive' or 'negative'
     comment: Optional[str] = None
+    session_id: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("session_id", "conversation_id"),
+    )
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
