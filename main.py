@@ -1,6 +1,7 @@
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -8,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from app.engines.db_engine_async import db_engine_async
 from app.engines.rag_engine_async import rag_engine_async
+from app.engines.index_manager import index_manager
 import app.api.auth as auth
 import app.api.admin as admin
 import app.api.chat as chat  # Unified chat module with hybrid classifier
@@ -18,17 +20,33 @@ async def lifespan(app: FastAPI):
     print("Starting up FastAPI...")
     await db_engine_async.connect()
     count = await rag_engine_async.index_mongodb_collections()
+    index_manager.last_index_time = datetime.now()
+    index_manager.last_index_count = count
+    changes = await index_manager.check_data_changes()
+    index_manager.last_index_hash = changes.get("current_hash")
+    await index_manager.start_auto_reindex()
     print(f"Indexed {count} documents.")
-    yield
+    try:
+        yield
+    finally:
+        await index_manager.stop_auto_reindex()
 
 
 app = FastAPI(title="UCSI Chatbot", version="3.0.0", lifespan=lifespan)
 
 # CORS
+cors_origins_raw = os.getenv("CORS_ORIGINS", "*")
+cors_origins = [v.strip() for v in cors_origins_raw.split(",") if v.strip()] or ["*"]
+cors_allow_credentials = os.getenv("CORS_ALLOW_CREDENTIALS", "false").strip().lower() in {
+    "1", "true", "yes", "on"
+}
+if "*" in cors_origins and cors_allow_credentials:
+    cors_allow_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

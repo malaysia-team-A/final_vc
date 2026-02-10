@@ -79,8 +79,18 @@ GENERAL_KNOWLEDGE_PATTERNS = [
 # Capability/smalltalk patterns
 CAPABILITY_PATTERNS = [
     r"\b(can|could|do|will|would)\s+you\s+(please\s+)?(do\s+)?(a\s+)?(dance|sing|jump|run|swim|stand|crawl|roll|fly|handstand)\b",
+    r"\bwhat\s+can\s+you\s+do\b",
+    r"\bwhat\s+do\s+you\s+do\b",
+    r"\bwhat\s+are\s+you\b",
+    r"\bwho\s+are\s+you\b",
+    r"\bhow\s+can\s+you\s+help\b",
     r"물구나무",
     r"(춤|노래|점프).*(해|춰|불러)",
+    r"(너|넌|니가|네가).*(뭘|뭐|무엇).*(해줄|할|도와|하는|할\s*수)",
+    r"(뭘|뭐|무엇).*(해줄|할|도와).*(수|있)",
+    r"(너|넌).*(누구|뭐야|뭐니)",
+    r"(어떤|무슨)\s*(도움|기능|일).*(줄|할|수)",
+    r"(도와|도움).*(줄|줘|주).*(수|있|뭐)",
 ]
 
 
@@ -218,6 +228,28 @@ class IntentClassifier:
                 "needs_rag": False,
                 "is_personal": True,
                 "is_grade_query": is_grade,
+                "search_term": None,
+                "source": "keyword_guard",
+                "debug": debug_info,
+            }
+
+        # Greeting / simple hi check — fast route to capability handler
+        _greeting_tokens = {
+            "hi", "hello", "hey", "hii", "hiii", "yo", "sup",
+            "good morning", "good afternoon", "good evening",
+            "안녕", "안녕하세요", "하이", "헬로", "반가워", "반갑습니다",
+        }
+        msg_stripped = re.sub(r"[!?.~,]+$", "", _normalize_text(message)).strip()
+        if msg_stripped in _greeting_tokens:
+            debug_info["keyword_guard"] = "greeting_detected"
+            debug_info["decision_reason"] = "Keyword guard: greeting pattern matched"
+            return {
+                "category": "capability",
+                "intent": "capability_smalltalk",
+                "confidence": 1.0,
+                "needs_rag": False,
+                "is_personal": False,
+                "is_grade_query": False,
                 "search_term": None,
                 "source": "keyword_guard",
                 "debug": debug_info,

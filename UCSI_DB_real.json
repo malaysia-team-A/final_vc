@@ -42,9 +42,8 @@
           "_id",
           "ai_response",
           "comment",
-          "id",
+          "query_norm",
           "rating",
-          "session_id",
           "timestamp",
           "user_message"
         ],
@@ -64,14 +63,47 @@
           "id": {
             "bsonType": "int"
           },
+          "legacy_id": {
+            "bsonType": "int"
+          },
+          "memory_source": {
+            "bsonType": "string"
+          },
+          "migrated_at": {
+            "bsonType": "string"
+          },
+          "migrated_from": {
+            "bsonType": "string"
+          },
+          "policy_tags": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "string"
+            }
+          },
+          "query_norm": {
+            "bsonType": "string"
+          },
+          "query_tokens": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "string"
+            }
+          },
           "rating": {
             "bsonType": "string"
+          },
+          "reward": {
+            "bsonType": "double"
           },
           "session_id": {
             "bsonType": "string"
           },
           "timestamp": {
-            "bsonType": "string"
+            "bsonType": [
+              "string",
+              "date"
+            ]
           },
           "user_message": {
             "bsonType": "string"
@@ -146,6 +178,15 @@
           "query": {
             "bsonType": "string"
           },
+          "query_norm": {
+            "bsonType": "string"
+          },
+          "query_tokens": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "string"
+            }
+          },
           "source": {
             "bsonType": "string"
           },
@@ -189,10 +230,7 @@
             "bsonType": "string"
           },
           "GPA": {
-            "bsonType": [
-              "double",
-              "int"
-            ]
+            "bsonType": "double"
           },
           "INTAKE": {
             "bsonType": "string"
@@ -585,48 +623,6 @@
         }
       }
     },
-    "UCSI_DB.feedbacks": {
-      "ns": "UCSI_DB.feedbacks",
-      "jsonSchema": {
-        "bsonType": "object",
-        "required": [
-          "_id",
-          "ai_response",
-          "comment",
-          "id",
-          "rating",
-          "session_id",
-          "timestamp",
-          "user_message"
-        ],
-        "properties": {
-          "_id": {
-            "bsonType": "objectId"
-          },
-          "ai_response": {
-            "bsonType": "string"
-          },
-          "comment": {
-            "bsonType": "null"
-          },
-          "id": {
-            "bsonType": "int"
-          },
-          "rating": {
-            "bsonType": "string"
-          },
-          "session_id": {
-            "bsonType": "string"
-          },
-          "timestamp": {
-            "bsonType": "string"
-          },
-          "user_message": {
-            "bsonType": "string"
-          }
-        }
-      }
-    },
     "UCSI_DB.semantic_intents": {
       "ns": "UCSI_DB.semantic_intents",
       "jsonSchema": {
@@ -683,7 +679,10 @@
             "bsonType": "objectId"
           },
           "confidence": {
-            "bsonType": "double"
+            "bsonType": [
+              "double",
+              "int"
+            ]
           },
           "conversation_id": {
             "bsonType": "string"

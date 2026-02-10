@@ -1,4 +1,4 @@
-"""
+﻿"""
 Response Validator for UCSI Buddy Chatbot
 
 Prevents hallucination by:
@@ -33,7 +33,7 @@ VERIFICATION_KEYWORDS = {
 # Patterns that indicate potential hallucination
 HALLUCINATION_PATTERNS = [
     r"(?:i think|i believe|probably|maybe|might be|could be)",
-    r"(?:일반적으로|아마|보통|대략|추측)",
+    r"(?:일반적으로|아마|보통|추정)",
     r"(?:typically|usually|often|sometimes)",
     r"(?:around|about|approximately)\s+\d+",
 ]
@@ -45,8 +45,8 @@ NO_DATA_RESPONSES = {
         "Please contact the relevant department for accurate details."
     ),
     "ko": (
-        "UCSI 지식 베이스에서 검증된 정보를 찾지 못했습니다. "
-        "정확한 정보는 해당 부서에 문의해 주세요."
+        "UCSI 지식베이스에서 검증된 정보를 찾지 못했습니다. "
+        "정확한 내용은 해당 부서에 문의해 주세요."
     ),
 }
 
@@ -65,7 +65,7 @@ def add_source_citation(
 
     Example:
         "The hostel fee is RM 450."
-        → "The hostel fee is RM 450. [Source: Hostel]"
+        "The hostel fee is RM 450. [Source: Hostel]"
     """
     if not response_text or not sources:
         return response_text
@@ -103,7 +103,7 @@ def add_source_citation(
         text += "."
 
     if language == "ko":
-        citation = citation.replace("Source", "출처").replace("Sources", "출처")
+        citation = citation.replace("Sources", "출처").replace("Source", "출처")
 
     return f"{text} {citation}"
 
@@ -127,11 +127,11 @@ def extract_numbers_from_text(text: str) -> List[Dict[str, Any]]:
         (r"RM\s*([\d,]+(?:\.\d{2})?)", "RM"),
         # $450, $ 450
         (r"\$\s*([\d,]+(?:\.\d{2})?)", "USD"),
-        # 450원, 1,500원
-        (r"([\d,]+)\s*원", "KRW"),
+        # 450 KRW, 1,500 KRW
+        (r"([\d,]+)\s*(?:KRW|won)", "KRW"),
         # Percentages
         (r"([\d.]+)\s*%", "%"),
-        (r"([\d.]+)\s*(?:percent|퍼센트)", "%"),
+        (r"([\d.]+)\s*(?:percent|percentage)", "%"),
     ]
 
     for pattern, currency in patterns:
@@ -372,14 +372,18 @@ class ResponseValidator:
 INJECTION_PATTERNS = [
     # Prompt override attempts
     r"ignore\s+(?:all\s+)?(?:previous|above|prior)\s+(?:instructions?|prompts?)",
+    r"ignore\s+all\s+above",
     r"(?:forget|disregard)\s+(?:everything|all)",
     r"you\s+are\s+now\s+(?:a|an)\s+",
     r"new\s+instructions?:",
     r"system\s*(?:prompt|message):",
-    # Korean
-    r"이전\s*(?:지시|명령|프롬프트).*무시",
-    r"시스템\s*프롬프트",
-    r"새로운\s*지시",
+    r"\[system\]",
+    r"</\s*instructions\s*>",
+    r"override\s+safety",
+    r"pretend\s+you\s+are\s+",
+    r"act\s+as\s+if\s+you\s+have\s+no\s+restrictions",
+    r"jailbreak",
+    r"bypass\s+(?:all\s+)?filters?",
     # Code injection
     r"```(?:python|javascript|bash|sh)",
     r"<script",
@@ -389,19 +393,17 @@ INJECTION_PATTERNS = [
 
 INJECTION_SANITIZE_PATTERNS = [
     (r"```[\s\S]*?```", "[CODE_BLOCK_REMOVED]"),
-    (r"<[^>]+>", ""),  # Remove HTML tags
+    (r"[<>/`]", ""),
 ]
-
-
 def detect_prompt_injection(text: str) -> Tuple[bool, List[str]]:
     """
     Detect potential prompt injection attempts.
 
     Returns:
-        (is_safe, list of detected patterns)
+        (is_injection, list of detected patterns)
     """
     if not text:
-        return True, []
+        return False, []
 
     text_lower = text.lower()
     detected = []
@@ -412,8 +414,7 @@ def detect_prompt_injection(text: str) -> Tuple[bool, List[str]]:
             if match:
                 detected.append(f"Injection pattern: {match.group()[:50]}")
 
-    return len(detected) == 0, detected
-
+    return len(detected) > 0, detected
 
 def sanitize_user_input(text: str, max_length: int = 1000) -> str:
     """
@@ -429,6 +430,9 @@ def sanitize_user_input(text: str, max_length: int = 1000) -> str:
     for pattern, replacement in INJECTION_SANITIZE_PATTERNS:
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
 
+    # Keep letters, digits, common punctuation, and CJK characters.
+    text = re.sub(r"[^0-9A-Za-z\u00C0-\u024F\u3131-\u3163\uAC00-\uD7A3\u4E00-\u9FFF\s\.,;:!?\-'\"()+/%#@]", "", text)
+
     # Remove excessive whitespace
     text = re.sub(r"\s+", " ", text).strip()
 
@@ -437,3 +441,4 @@ def sanitize_user_input(text: str, max_length: int = 1000) -> str:
 
 # Singleton instance
 response_validator = ResponseValidator()
+

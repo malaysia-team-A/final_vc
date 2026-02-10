@@ -8,6 +8,7 @@ Clean architecture:
 """
 
 import json
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -35,6 +36,7 @@ from app.api.chat_helpers import (
     _capability_suggestions,
     _compose_no_data_response,
     _detect_language,
+    _extract_rich_content,
     _format_personal_info,
     _personal_info_suggestions,
     _user_display_name,
@@ -76,6 +78,39 @@ def _extract_rag_meta(rag_result: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "confidence": max(0.0, min(confidence, 1.2)),
         "sources": [str(s) for s in sources[:8]],
     }
+
+
+def _intent_to_preferred_labels(classification: Dict[str, Any]) -> Optional[List[str]]:
+    """Map intent classification to preferred RAG labels for better search precision."""
+    intent = str(classification.get("intent") or "").lower()
+    label_map = {
+        "ucsi_hostel": ["Hostel", "HostelFAQ"],
+        "ucsi_facility": ["Facility", "CampusBlocks"],
+        "ucsi_programme": ["Programme"],
+        "ucsi_staff": ["Staff"],
+        "ucsi_schedule": ["Schedule"],
+    }
+    return label_map.get(intent)
+
+
+def _clean_context_for_llm(context: str) -> str:
+    """Strip internal markers from RAG context before sending to LLM.
+
+    Removes [Document], [Hostel], [Programme], [conf:X.XX] etc. so the
+    LLM sees clean factual text and never echoes internal tags to users.
+    """
+    if not context:
+        return context
+    # Remove label prefixes like [Document], [Hostel], [Facility], [Programme], etc.
+    cleaned = re.sub(r"\[(?:Document|Hostel|Facility|Programme|Staff|Schedule|HostelFAQ|CampusBlocks|Verified Answer)\]\s*", "", context)
+    # Remove confidence markers like [conf:0.82]
+    cleaned = re.sub(r"\s*\[conf:[0-9.]+\]", "", cleaned)
+    # Remove [NO_RELEVANT_DATA_FOUND] marker
+    cleaned = cleaned.replace("[NO_RELEVANT_DATA_FOUND]", "")
+    # Remove [LOW_CONFIDENCE_CONTEXT] and [FEEDBACK_GUARD] markers
+    cleaned = re.sub(r"\[LOW_CONFIDENCE_CONTEXT\][^\n]*\n*", "", cleaned)
+    cleaned = re.sub(r"\[FEEDBACK_GUARD\][^\n]*\n*", "", cleaned)
+    return cleaned.strip()
 
 
 async def _log_rag_miss(
@@ -215,10 +250,12 @@ async def handle_ucsi_query(
     except Exception:
         pass
 
-    # Perform RAG search
+    # Perform RAG search with preferred labels from intent classification
+    preferred_labels = _intent_to_preferred_labels(classification)
     rag_result = await rag_engine_async.search_context(
         query=search_term,
         top_k=5,
+        preferred_labels=preferred_labels,
     )
     rag_meta = _extract_rag_meta(rag_result)
 
@@ -254,13 +291,13 @@ async def handle_ucsi_query(
             reason="no_relevant_data",
         )
         return {
-            "text": _compose_no_data_response(),
+            "text": _compose_no_data_response(user_lang),
             "suggestions": [],
             "retrieval": retrieval_meta,
         }
 
-    # Build context for LLM
-    context_text = rag_meta["context"]
+    # Build context for LLM — strip internal markers so they don't leak into responses
+    context_text = _clean_context_for_llm(rag_meta["context"])
 
     if feedback_bad_guard:
         context_text = (
@@ -283,17 +320,41 @@ async def handle_ucsi_query(
         rlhf_policy_hint=rlhf_policy.get("policy_hint"),
     )
 
-    response_text = str(ai_result.get("response") or "I'm not sure how to respond.")
+    response_text = str(ai_result.get("response") or ai_result.get("text") or "I'm not sure how to respond.")
     suggestions = ai_result.get("suggestions", [])
 
     # Include context for validation
     retrieval_meta["context"] = context_text
 
-    return {
+    # Extract rich content only when query intent is relevant
+    # (staff query → staff profiles, building query → maps/images)
+    intent = classification.get("intent", "")
+    rich_content = {"links": [], "images": []}
+    if intent in ("ucsi_staff",) or any(
+        kw in user_msg.lower()
+        for kw in ("staff", "professor", "lecturer", "dean", "교수", "강사", "학장", "직원")
+    ):
+        raw_rich = _extract_rich_content(rag_meta["context"])
+        rich_content["links"].extend(raw_rich.get("links", []))
+    if intent in ("ucsi_facility",) or any(
+        kw in user_msg.lower()
+        for kw in ("block", "building", "map", "where", "블록", "건물", "어디", "지도", "위치")
+    ):
+        raw_rich = _extract_rich_content(rag_meta["context"])
+        rich_content["images"].extend(raw_rich.get("images", []))
+        rich_content["links"].extend(
+            lnk for lnk in raw_rich.get("links", [])
+            if lnk.get("type") in ("map", "programme_info")
+        )
+
+    result = {
         "text": response_text,
         "suggestions": suggestions[:3],
         "retrieval": retrieval_meta,
     }
+    if rich_content.get("links") or rich_content.get("images"):
+        result["rich_content"] = rich_content
+    return result
 
 
 async def handle_general_query(
@@ -313,7 +374,7 @@ async def handle_general_query(
         query_scope_hint="general_person" if classification.get("intent") == "general_person" else None,
     )
 
-    response_text = str(ai_result.get("response") or "I'm not sure how to respond.")
+    response_text = str(ai_result.get("response") or ai_result.get("text") or "I'm not sure how to respond.")
     suggestions = ai_result.get("suggestions", [])
 
     return {
@@ -480,42 +541,47 @@ async def chat(body: ChatRequest, request: Request):
                 sources=sources,
                 confidence=confidence,
                 language=user_lang,
-                strict_grounding=(confidence < 0.6),
+                strict_grounding=(confidence < 0.3),
             )
 
-            if not validation["is_valid"]:
+            if not validation.get("is_valid", True):
+                warning_list = [str(w) for w in (validation.get("warnings") or [])]
                 # Log validation issues
                 await _log_rag_miss(
                     conversation_id=conversation_id,
                     user_message=user_msg,
                     query=classification.get("search_term", user_msg),
                     rag_meta={"confidence": confidence, "sources": sources},
-                    reason=f"validation_failed:{','.join(validation['issues'])}",
+                    reason=(
+                        f"validation_failed:{','.join(warning_list)}"
+                        if warning_list
+                        else "validation_failed"
+                    ),
                 )
                 # Use safe response if validation failed
-                response_text = validation["corrected_response"]
+                response_text = validation.get("text", response_text)
                 result["text"] = response_text
 
-        # [5] Build final response
-        response_payload = {
-            "text": result.get("text", ""),
-            "suggestions": result.get("suggestions", [])[:3],
-            "retrieval": result.get("retrieval", {}),
-        }
+        # [5] Build final response — return fields directly (no double JSON encoding)
+        final_text = result.get("text", "")
+        final_suggestions = result.get("suggestions", [])[:3]
 
-        # Add classification debug info in development
-        if classification.get("debug"):
-            response_payload["retrieval"]["classification_debug"] = classification["debug"]
+        # Save to conversation history (compact)
+        append_conversation_message(session_key, "model", final_text)
 
-        # Save to conversation history
-        append_conversation_message(session_key, "model", json.dumps(response_payload))
-
-        return {
-            "response": json.dumps(response_payload),
+        response_out = {
+            "response": final_text,
+            "suggestions": final_suggestions,
             "session_id": conversation_id,
             "type": "message",
             "user": _user_display_name(user),
         }
+
+        # Include rich content (links, images) if available
+        if result.get("rich_content"):
+            response_out["rich_content"] = result["rich_content"]
+
+        return response_out
 
 
 # =============================================================================

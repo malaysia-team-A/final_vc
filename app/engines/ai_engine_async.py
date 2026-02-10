@@ -525,12 +525,12 @@ Rules:
 Output JSON: {{ "text": "...", "suggestions": [], "needs_context": bool, "search_term": string|null }}
 
 ## Response Guidelines
-1. **Grounding**: Base your answer ONLY on the Context provided. Never invent information.
-2. **Missing Data**: Only say information is unavailable when Context explicitly shows [NO_RELEVANT_DATA_FOUND].
-3. **Language**: {lang_instruct}
-4. **Tone**: Be friendly, helpful, and professional. Use natural conversational language.
-5. **Brevity**: Keep responses concise but complete. Avoid unnecessary repetition.
-6. **Formatting**: Use bullet points or numbered lists for multiple items. Break long responses into paragraphs.
+1. Grounding: Base your answer ONLY on the Context provided. Never invent information.
+2. Missing Data: Only say information is unavailable when Context explicitly shows [NO_RELEVANT_DATA_FOUND].
+3. Language: {lang_instruct}
+4. Tone: Be friendly, helpful, and professional. Use natural conversational language.
+5. Brevity: Keep responses concise but complete. Avoid unnecessary repetition.
+6. Formatting: Use plain text. Use bullet points (- item) for lists. Do NOT use markdown bold (**text**) or italic (*text*). Use line breaks to separate sections. Do NOT include raw URLs, image links, map links, or coordinates in the text - those are handled separately by the system.
 
 ## Context Rules
 - UCSI/campus/hostel/fees/programme/staff/schedule/personal data → needs_context=true, provide search_term
@@ -545,6 +545,8 @@ Output JSON: {{ "text": "...", "suggestions": [], "needs_context": bool, "search
 - Verify numbers and facts match the Context exactly
 - Don't add extra details not in the Context
 - If Context has confidence scores, prefer higher confidence information
+- NEVER echo internal labels like [Document], [Hostel], [Programme], [Facility], [Staff], [Schedule], [CampusBlocks], [HostelFAQ], [Verified Answer], [conf:X.XX], or MongoDB source names in your response
+- NEVER include placeholder prefixes or system metadata in your answer
 
 {scope_rule}
 {rlhf_rule}
@@ -569,24 +571,27 @@ Output JSON: {{ "text": "...", "suggestions": [], "needs_context": bool, "search
                     text = response.text
                     await _circuit_breaker.record_success()
                     
-                    # Parse JSON
-                    try:
-                        # extract json
-                        match = re.search(r'\{.*\}', text, re.DOTALL)
-                        if match:
-                            data = json.loads(match.group())
-                            suggestions = data.get("suggestions")
-                            if not isinstance(suggestions, list):
-                                suggestions = []
-                            return {
-                                "response": data.get("text") or text,
-                                "suggestions": suggestions[:3],
-                                "needs_context": bool(data.get("needs_context", False)),
-                                "search_term": self._sanitize_search_term(data.get("search_term")),
-                            }
-                    except: pass
+                    # Parse JSON — use robust multi-strategy parser
+                    data = self._extract_json_dict(text)
+                    if data:
+                        response_body = str(data.get("text") or text)
+                        # Strip any accidentally echoed internal markers
+                        response_body = re.sub(r"\[(?:Document|Hostel|Facility|Programme|Staff|Schedule|HostelFAQ|CampusBlocks|Verified Answer)\]\s*", "", response_body)
+                        response_body = re.sub(r"\s*\[conf:[0-9.]+\]", "", response_body)
+                        suggestions = data.get("suggestions")
+                        if not isinstance(suggestions, list):
+                            suggestions = []
+                        return {
+                            "response": response_body.strip(),
+                            "suggestions": suggestions[:3],
+                            "needs_context": bool(data.get("needs_context", False)),
+                            "search_term": self._sanitize_search_term(data.get("search_term")),
+                        }
                     
-                    return {"response": text, "needs_context": False, "search_term": None}
+                    # Fallback: clean raw text response
+                    clean_text = re.sub(r"\[(?:Document|Hostel|Facility|Programme|Staff|Schedule|HostelFAQ|CampusBlocks|Verified Answer)\]\s*", "", text)
+                    clean_text = re.sub(r"\s*\[conf:[0-9.]+\]", "", clean_text).strip()
+                    return {"response": clean_text or text, "needs_context": False, "search_term": None}
                     
                 except Exception as e:
                     if "resource_exhausted" in str(e).lower():

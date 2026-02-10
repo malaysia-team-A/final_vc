@@ -218,11 +218,11 @@ class UXTester:
             session_id="test123",
         )
 
-        has_text = "text" in enhanced and enhanced["text"]
+        has_text = "text" in enhanced and bool(enhanced["text"])
         has_suggestions = "suggestions" in enhanced and isinstance(enhanced["suggestions"], list)
         has_metadata = "metadata" in enhanced
 
-        passed = sum([has_text, has_suggestions, has_metadata])
+        passed = sum([bool(has_text), bool(has_suggestions), bool(has_metadata)])
         total = 3
 
         self.log(f"Has text: {'OK' if has_text else 'FAIL'}")

@@ -6,6 +6,85 @@ from typing import Any, Dict, List, Optional
 from app.config import Config
 from app.schemas import ChatRequest
 
+
+def _extract_rich_content(context_text: str) -> Dict[str, Any]:
+    """Extract URLs, images, and map links from RAG context for rich display."""
+    links: List[Dict[str, str]] = []
+    images: List[Dict[str, str]] = []
+    seen_urls: set = set()
+
+    if not context_text:
+        return {"links": links, "images": images}
+
+    # --- Staff profile URLs (structured format: [staff] name: X | ... | profile_url: URL) ---
+    staff_blocks = re.finditer(
+        r"\[staff\]\s*name:\s*([^|]+?)(?:\s*\|)", context_text, re.IGNORECASE,
+    )
+    for block_match in staff_blocks:
+        staff_name = block_match.group(1).strip()
+        # Find profile_url in the same staff block (until next [staff] or section break)
+        block_start = block_match.start()
+        next_block = re.search(r"\[staff\]|\[conf:", context_text[block_start + 10:])
+        block_end = (block_start + 10 + next_block.start()) if next_block else len(context_text)
+        block_text = context_text[block_start:block_end]
+        url_match = re.search(r"profile_url:\s*(https?://[^\s|,\]]+)", block_text)
+        if url_match:
+            url = url_match.group(1).strip().rstrip("'\"}")
+            if url not in seen_urls:
+                seen_urls.add(url)
+                label = f"View {staff_name}'s Profile" if staff_name else "View Staff Profile"
+                links.append({"url": url, "type": "staff_profile", "label": label})
+
+    # Fallback: legacy dict format {'profile_url': 'URL', 'name': 'X'}
+    legacy_staff = re.finditer(
+        r"['\"]?profile_url['\"]?\s*:\s*['\"]?(https?://[^\s'\"}\|,]+)", context_text,
+    )
+    for match in legacy_staff:
+        url = match.group(1).strip().rstrip("'\"}")
+        if url not in seen_urls:
+            seen_urls.add(url)
+            # Try to extract name from nearby context
+            nearby = context_text[max(0, match.start() - 200):match.start()]
+            name_match = re.search(r"['\"]?name['\"]?\s*:\s*['\"]?([^'\"}\|,]+)", nearby)
+            name = name_match.group(1).strip() if name_match else ""
+            label = f"View {name}'s Profile" if name else "View Staff Profile"
+            links.append({"url": url, "type": "staff_profile", "label": label})
+
+    # --- Building images (CampusBlocks) ---
+    image_matches = re.finditer(
+        r"building_image:\s*(https?://[^\s\|,\]]+)", context_text, re.IGNORECASE,
+    )
+    for match in image_matches:
+        url = match.group(1).strip().rstrip("'\"| ")
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            # Extract block name from preceding context
+            preceding = context_text[max(0, match.start() - 300):match.start()]
+            name_match = re.search(r"name:\s*([^|]+)", preceding)
+            block_name = name_match.group(1).strip() if name_match else ""
+            label = block_name if block_name else "Building Image"
+            images.append({"url": url, "type": "building_image", "label": label})
+
+    # --- Map links (CampusBlocks) ---
+    map_matches = re.finditer(
+        r"(?:^|\|)\s*map:\s*(https?://[^\s\|,\]]+)", context_text, re.IGNORECASE,
+    )
+    for match in map_matches:
+        url = match.group(1).strip().rstrip("'\"| ")
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            links.append({"url": url, "type": "map", "label": "View on Map"})
+
+    # --- Programme URLs ---
+    url_matches = re.finditer(r"Url:\s*(https?://[^\s\|,\]]+)", context_text)
+    for match in url_matches:
+        url = match.group(1).strip().rstrip("'\"| ")
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            links.append({"url": url, "type": "programme_info", "label": "More Information"})
+
+    return {"links": links, "images": images}
+
 def _user_student_number(user: Optional[dict]) -> str:
     return str((user or {}).get("sub") or (user or {}).get("student_number") or "").strip()
 
@@ -403,11 +482,15 @@ def _should_force_rag(message: str) -> bool:
     return any(_contains_token(q, kw) for kw in Config.RAG_FORCE_KEYWORDS)
 
 
-def _compose_no_data_response() -> str:
+def _compose_no_data_response(lang: str = "en") -> str:
+    if lang == "ko":
+        return (
+            "현재 UCSI 지식베이스에서 관련 정보를 찾지 못했어요. "
+            "프로그램명, 블록명, 입학 시기 등 구체적인 키워드로 다시 질문해 주세요."
+        )
     return (
         "I could not find reliable information in the current UCSI knowledge base. "
-        "Please ask with specific keywords (programme name, block, intake, staff role), "
-        "or request a data update."
+        "Please ask with specific keywords (programme name, block, intake, staff role)."
     )
 
 
@@ -490,19 +573,67 @@ def _is_capability_smalltalk_query(message: str) -> bool:
 
 
 def _capability_smalltalk_response(message: str) -> str:
-    q = str(message or "").lower()
+    q = str(message or "").lower().strip()
     lang = _detect_language(message)
     is_handstand = ("handstand" in q) or ("물구나무" in q)
+
+    # Greeting detection — hi, hello, hey, etc.
+    greeting_tokens = {
+        "hi", "hello", "hey", "hii", "hiii", "yo", "sup",
+        "good morning", "good afternoon", "good evening", "good night",
+        "안녕", "안녕하세요", "하이", "헬로", "반가워", "반갑습니다",
+    }
+    q_stripped = re.sub(r"[!?.~,]+$", "", q).strip()
+    is_greeting = q_stripped in greeting_tokens or any(q_stripped.startswith(g) for g in greeting_tokens if len(g) > 2)
+
+    if is_greeting:
+        if lang == "ko":
+            return (
+                "안녕하세요! 저는 UCSI Buddy예요 👋\n\n"
+                "UCSI 대학교에 대해 궁금한 건 뭐든 물어보세요!\n"
+                "프로그램, 기숙사, 시설, 학사 일정, 교직원 정보 등을 도와드릴 수 있어요."
+            )
+        return (
+            "Hello! I'm UCSI Buddy 👋\n\n"
+            "Feel free to ask me anything about UCSI University!\n"
+            "I can help with programmes, hostel, facilities, schedules, staff info, and more."
+        )
+
+    # "What can you do" / "뭘 해줄 수 있어" type questions
+    is_what_can = any(kw in q for kw in [
+        "what can you", "what do you do", "how can you help",
+        "what are you", "who are you", "help me",
+        "뭘 해", "뭐 해", "무엇을 해", "도와", "도움",
+        "할 수 있", "해줄 수", "뭐야", "누구야", "누구니",
+    ])
+
+    if is_what_can:
+        if lang == "ko":
+            return (
+                "안녕하세요! 저는 UCSI Buddy예요. 이런 것들을 도와드릴 수 있어요:\n\n"
+                "- UCSI 프로그램, 등록금, 입학 정보 안내\n"
+                "- 기숙사 비용, 시설 정보\n"
+                "- 캠퍼스 건물 위치, 지도\n"
+                "- 교수/직원 정보\n"
+                "- 학사 일정, 시험 일정\n"
+                "- 로그인 후 내 성적, 프로필 조회\n\n"
+                "궁금한 게 있으면 편하게 물어보세요!"
+            )
+        return (
+            "Hi! I'm UCSI Buddy. I can help you with:\n\n"
+            "- UCSI programmes, tuition fees, and admissions\n"
+            "- Hostel fees and facilities\n"
+            "- Campus building locations and maps\n"
+            "- Staff and lecturer information\n"
+            "- Academic schedules and exam dates\n"
+            "- Your grades and profile (after login)\n\n"
+            "Feel free to ask me anything!"
+        )
 
     if lang == "ko":
         if is_handstand:
             return "저는 물리적인 몸이 없어서 물구나무를 설 수는 없어요. 대신 질문에는 정확하고 빠르게 답할 수 있어요."
         return "저는 실제 동작을 수행할 수는 없지만, 필요한 정보를 정확하게 정리해 드릴 수 있어요."
-
-    if lang == "zh":
-        if is_handstand:
-            return "I do not have a physical body, so I cannot do a handstand."
-        return "I cannot perform physical actions, but I can provide accurate answers."
 
     if is_handstand:
         return "I do not have a physical body, so I cannot do a handstand. But I can answer your questions clearly."

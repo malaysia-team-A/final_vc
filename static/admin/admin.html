@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -146,10 +146,13 @@
     <div class="container">
         <header>
             <div>
-                <h1>🤖 UCSI Chatbot Admin</h1>
+                <h1>?쨼 UCSI Chatbot Admin</h1>
                 <p style="color: var(--text-secondary);">System Monitoring & Knowledge Management</p>
             </div>
-            <button class="btn" onclick="fetchStats()">Refresh Data</button>
+            <div style="display:flex; gap:0.5rem;">
+                <button class="btn" onclick="fetchStats()">Refresh Data</button>
+                <button class="btn" onclick="adminLogout()" style="background:#475569;">Logout</button>
+            </div>
         </header>
 
         <!-- Stats Row -->
@@ -225,20 +228,74 @@
     </div>
 
     <script>
-        // API Base
         const API = '/api/admin';
+        const ADMIN_TOKEN_KEY = 'ucsi_admin_token';
+        let adminToken = localStorage.getItem(ADMIN_TOKEN_KEY) || '';
 
-        // Load Stats
-        async function fetchStats() {
+        function authHeaders(extra = {}) {
+            const headers = { ...extra };
+            if (adminToken) headers.Authorization = `Bearer ${adminToken}`;
+            return headers;
+        }
+
+        async function adminLogin(forcePrompt = false) {
+            if (adminToken && !forcePrompt) return true;
+
+            const password = window.prompt('Enter admin password');
+            if (!password) return false;
+
             try {
-                const res = await fetch(`${API}/stats`);
+                const res = await fetch(`${API}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                const data = await res.json();
+
+                if (!res.ok || !data.success || !data.access_token) {
+                    alert(data.message || 'Admin login failed.');
+                    return false;
+                }
+
+                adminToken = data.access_token;
+                localStorage.setItem(ADMIN_TOKEN_KEY, adminToken);
+                return true;
+            } catch (e) {
+                console.error('Admin login error:', e);
+                alert('Admin login failed.');
+                return false;
+            }
+        }
+
+        async function adminLogout() {
+            if (adminToken) {
+                try {
+                    await fetch(`${API}/logout`, { method: 'POST', headers: authHeaders() });
+                } catch (e) {
+                    console.error('Admin logout error:', e);
+                }
+            }
+            adminToken = '';
+            localStorage.removeItem(ADMIN_TOKEN_KEY);
+            alert('Logged out.');
+        }
+
+        async function fetchStats() {
+            if (!(await adminLogin(false))) return;
+
+            try {
+                let res = await fetch(`${API}/stats`, { headers: authHeaders() });
+                if (res.status === 401 && (await adminLogin(true))) {
+                    res = await fetch(`${API}/stats`, { headers: authHeaders() });
+                }
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
                 const data = await res.json();
 
                 document.getElementById('totalFeedbacks').innerText = data.total_feedbacks;
                 document.getElementById('satisfactionRate').innerText = data.satisfaction_rate + '%';
                 document.getElementById('unansweredCount').innerText = data.unanswered_count;
 
-                // Render Unanswered
                 const uTable = document.getElementById('unansweredTable').getElementsByTagName('tbody')[0];
                 uTable.innerHTML = '';
                 if (data.unanswered_logs && data.unanswered_logs.length > 0) {
@@ -254,7 +311,6 @@
                     uTable.innerHTML = '<tr><td colspan="3" style="text-align:center">No unresolved questions. Good job!</td></tr>';
                 }
 
-                // Render Feedbacks
                 const fTable = document.getElementById('feedbackTable').getElementsByTagName('tbody')[0];
                 fTable.innerHTML = '';
                 if (data.recent_feedbacks && data.recent_feedbacks.length > 0) {
@@ -264,69 +320,74 @@
                         row.innerHTML = `
                             <td style="color:#94a3b8">${new Date(item.timestamp).toLocaleTimeString()}</td>
                             <td title="${item.user_message}">${item.user_message.substring(0, 50)}...</td>
-                            <td style="color:${color}; font-weight:bold">${item.rating === 'positive' ? '👍' : '👎'}</td>
+                            <td style="color:${color}; font-weight:bold">${item.rating === 'positive' ? 'POS' : 'NEG'}</td>
                             <td>${item.comment || '-'}</td>
                         `;
                     });
                 } else {
                     fTable.innerHTML = '<tr><td colspan="4" style="text-align:center">No feedback yet.</td></tr>';
                 }
-
             } catch (e) {
-                console.error("Stats Error", e);
+                console.error('Stats error:', e);
             }
         }
 
-        // Upload Logic
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
 
         dropZone.onclick = () => fileInput.click();
-
         dropZone.ondragover = (e) => {
             e.preventDefault();
             dropZone.classList.add('dragover');
         };
         dropZone.ondragleave = () => dropZone.classList.remove('dragover');
-
         dropZone.ondrop = (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
             handleFiles(e.dataTransfer.files);
         };
-
         fileInput.onchange = () => handleFiles(fileInput.files);
 
         async function handleFiles(files) {
             if (files.length === 0) return;
+            if (!(await adminLogin(false))) return;
 
             const formData = new FormData();
-            formData.append('file', files[0]); // Handle single file for now
+            formData.append('file', files[0]);
 
             const status = document.getElementById('uploadStatus');
             status.innerHTML = '<span style="color:var(--accent)">Uploading...</span>';
 
             try {
-                const res = await fetch(`${API}/upload`, {
+                let res = await fetch(`${API}/upload`, {
                     method: 'POST',
+                    headers: authHeaders(),
                     body: formData
                 });
-                const result = await res.json();
+                if (res.status === 401 && (await adminLogin(true))) {
+                    res = await fetch(`${API}/upload`, {
+                        method: 'POST',
+                        headers: authHeaders(),
+                        body: formData
+                    });
+                }
 
-                if (result.success) {
-                    status.innerHTML = '<span style="color:var(--success)">Upload Successful! RAG Updated.</span>';
+                const result = await res.json();
+                if (res.ok && result.success) {
+                    status.innerHTML = '<span style="color:var(--success)">Upload successful. RAG updated.</span>';
+                    fetchStats();
                 } else {
-                    status.innerHTML = `<span style="color:var(--danger)">Error: ${result.message}</span>`;
+                    status.innerHTML = `<span style="color:var(--danger)">Error: ${result.message || 'Upload failed.'}</span>`;
                 }
             } catch (e) {
-                status.innerHTML = '<span style="color:var(--danger)">Upload Failed.</span>';
+                status.innerHTML = '<span style="color:var(--danger)">Upload failed.</span>';
             }
         }
 
-        // Initial Load
         fetchStats();
-        setInterval(fetchStats, 30000); // Auto refresh every 30s
+        setInterval(fetchStats, 30000);
     </script>
 </body>
 
 </html>
+

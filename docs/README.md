@@ -1,7 +1,7 @@
 # UCSI 버디 챗봇 문서 허브
 
 - 문서 기준일: 2026-02-10
-- 버전: 3.1.0
+- 버전: 3.2.0
 - 기준 코드: `main.py`, `app/api/*.py`, `app/engines/*.py`
 - 기본 실행 포트: `8000`
 
@@ -9,13 +9,14 @@
 이 프로젝트는 UCSI 대학 도메인 질문을 우선 처리하는 RAG 기반 챗봇입니다.
 현재 서버는 FastAPI 비동기 구조로 동작하며 인증/개인정보 질의/일반 질의/관리자 기능이 API로 분리되어 있습니다.
 
-### 주요 기능 (v3.1.0)
+### 주요 기능 (v3.2.0)
 - **하이브리드 인텐트 분류**: Keyword Guard → Vector Search → LLM Fallback
 - **할루시네이션 방지**: 응답 검증 및 소스 기반 검증
 - **Self-Learning**: 피드백 기반 학습 (RLHF)
 - **보안 강화**: Prompt Injection 탐지 및 입력 Sanitization
 - **성능 모니터링**: 응답 시간, RAG hit rate, LLM 사용량 추적
 - **UX 개선**: 다국어 인사말, 에러 메시지, 후속 질문 제안
+- **Rich Content**: Staff 프로필 링크, 건물 이미지, 프로그램/지도 링크, URL 자동 링크화
 
 ## 2. 현재 아키텍처
 - 백엔드: FastAPI + Uvicorn
@@ -37,8 +38,10 @@
   - `GET /api/export_chat`
 - 관리자
   - `POST /api/admin/login` - 관리자 로그인
+  - `POST /api/admin/logout` - 관리자 로그아웃
   - `GET /api/admin/stats` - 통계 조회
   - `POST /api/admin/upload` - 문서 업로드
+  - `POST /api/admin/reindex` - MongoDB 재인덱싱
   - `GET /api/admin/files` - 파일 목록
   - `DELETE /api/admin/files` - 파일 삭제
   - `GET /api/admin/index/status` - 인덱스 상태
@@ -48,7 +51,7 @@
   - `GET /api/admin/monitoring/dashboard` - 모니터링 대시보드
   - `GET /api/admin/unanswered/analysis` - 미답변 질문 분석
   - `GET /api/admin/unanswered/report` - 미답변 리포트
-  - `GET /api/admin/health` - 헬스체크
+  - `GET /api/admin/health` - 헬스체크 (Public)
 
 ## 4. 실행 방법
 1. 가상환경 생성 및 활성화

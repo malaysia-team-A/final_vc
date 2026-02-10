@@ -116,8 +116,21 @@ class AsyncRAGEngine:
                     if isinstance(value, str):
                         text_parts.append(f"{field}: {value}")
                     elif isinstance(value, list):
-                        for item in value[:5]:
-                            text_parts.append(str(item))
+                        if field == "staff_members":
+                            for member in value[:10]:
+                                if isinstance(member, dict):
+                                    member_parts = []
+                                    for mk in ("name", "role", "email", "profile_url"):
+                                        mv = member.get(mk)
+                                        if mv:
+                                            member_parts.append(f"{mk}: {mv}")
+                                    if member_parts:
+                                        text_parts.append("[staff] " + " | ".join(member_parts))
+                                else:
+                                    text_parts.append(str(member))
+                        else:
+                            for item in value[:5]:
+                                text_parts.append(str(item))
                     elif isinstance(value, (int, float)):
                         text_parts.append(f"{field}: {value}")
 
@@ -147,8 +160,9 @@ class AsyncRAGEngine:
         top_k: int = 5,
         preferred_labels: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
+        """Pure FAISS vector search. Learned-answer lookup is handled by chat.py."""
         loop = asyncio.get_running_loop()
-        base_result = await loop.run_in_executor(
+        return await loop.run_in_executor(
             self.executor,
             lambda: _sync_rag_engine.search(
                 query=query,
@@ -156,37 +170,6 @@ class AsyncRAGEngine:
                 preferred_labels=preferred_labels,
             ),
         )
-
-        learned_answer = None
-        try:
-            learned_answer = await db_engine_async.search_learned_response(str(query or ""))
-        except Exception:
-            learned_answer = None
-
-        if not learned_answer:
-            return base_result
-
-        base = dict(base_result or {})
-        context = str(base.get("context") or "").strip()
-        learned_context = f"[Verified Answer]\n{learned_answer} [conf:1.00]"
-        merged_context = learned_context
-        if context and "[NO_RELEVANT_DATA_FOUND]" not in context:
-            merged_context = f"{learned_context}\n\n{context}"
-
-        sources = []
-        seen = set()
-        for source in ["LearnedQA"] + list(base.get("sources") or []):
-            s = str(source or "").strip()
-            if s and s not in seen:
-                seen.add(s)
-                sources.append(s)
-
-        return {
-            "context": merged_context,
-            "has_relevant_data": True,
-            "confidence": max(float(base.get("confidence") or 0.0), 1.0),
-            "sources": sources,
-        }
 
     async def index_mongodb_collections(self) -> int:
         db = db_engine_async.db

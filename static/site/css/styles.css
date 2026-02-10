@@ -130,3 +130,106 @@ body {
 .dark .profile-card-value {
     color: #f9fafb;
 }
+
+/* ===== Rich Content: Inline Links ===== */
+.chat-link {
+    color: #a31e22;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    word-break: break-all;
+    transition: color 0.15s;
+}
+
+.chat-link:hover {
+    color: #7a1215;
+}
+
+.dark .chat-link {
+    color: #f87171;
+}
+
+.dark .chat-link:hover {
+    color: #fca5a5;
+}
+
+/* ===== Rich Content: Images ===== */
+.rich-images {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.rich-image-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.rich-image {
+    width: 100%;
+    max-width: 260px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.rich-image:hover {
+    opacity: 0.85;
+}
+
+.dark .rich-image {
+    border-color: #374151;
+}
+
+.rich-image-label {
+    font-size: 10px;
+    color: #6b7280;
+    padding-left: 2px;
+}
+
+.dark .rich-image-label {
+    color: #9ca3af;
+}
+
+/* ===== Rich Content: Link Buttons ===== */
+.rich-links {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.rich-link-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #a31e22;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: all 0.2s;
+    cursor: pointer;
+    max-width: fit-content;
+}
+
+.rich-link-btn:hover {
+    background: #fee2e2;
+    border-color: #f87171;
+}
+
+.dark .rich-link-btn {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.1);
+    border-color: rgba(248, 113, 113, 0.3);
+}
+
+.dark .rich-link-btn:hover {
+    background: rgba(248, 113, 113, 0.2);
+    border-color: rgba(248, 113, 113, 0.5);
+}

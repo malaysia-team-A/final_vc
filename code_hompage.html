@@ -101,44 +101,6 @@
         .dark .student-info {
             background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
         }
-
-        /* Chat link styles */
-        .chat-link {
-            color: #a31e22;
-            text-decoration: underline;
-            text-underline-offset: 2px;
-            word-break: break-all;
-            transition: color 0.15s;
-        }
-        .chat-link:hover { color: #7a1215; }
-        .dark .chat-link { color: #f87171; }
-        .dark .chat-link:hover { color: #fca5a5; }
-
-        /* Rich content: Images */
-        .rich-images { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-        .rich-image-container { display: flex; flex-direction: column; gap: 4px; }
-        .rich-image { width: 100%; max-width: 260px; border-radius: 8px; border: 1px solid #e5e7eb; cursor: pointer; transition: opacity 0.15s; }
-        .rich-image:hover { opacity: 0.85; }
-        .dark .rich-image { border-color: #374151; }
-        .rich-image-label { font-size: 10px; color: #6b7280; padding-left: 2px; }
-        .dark .rich-image-label { color: #9ca3af; }
-
-        /* Rich content: Link buttons */
-        .rich-links { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
-        .rich-link-btn {
-            display: inline-flex; align-items: center; gap: 6px;
-            padding: 7px 12px; font-size: 12px; font-weight: 500;
-            color: #a31e22; background: #fef2f2; border: 1px solid #fecaca;
-            border-radius: 8px; text-decoration: none; transition: all 0.2s;
-            cursor: pointer; max-width: fit-content;
-        }
-        .rich-link-btn:hover { background: #fee2e2; border-color: #f87171; }
-        .dark .rich-link-btn { color: #f87171; background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.3); }
-        .dark .rich-link-btn:hover { background: rgba(248,113,113,0.2); border-color: rgba(248,113,113,0.5); }
-
-        /* Markdown body list styling */
-        .markdown-body ul { list-style-type: disc; padding-left: 1.2em; margin: 4px 0; }
-        .markdown-body li { margin: 2px 0; }
     </style>
 </head>
 
@@ -1179,25 +1141,24 @@
                     openHighSecurityPanel();
                 }
                 else {
-                    // Read fields directly from response
-                    let aiText = data.response || '';
-                    let suggestions = data.suggestions || [];
-                    let richContent = data.rich_content || null;
+                    // PARSE JSON RESPONSE FROM AI ENGINE
+                    let aiText = data.response;
+                    let suggestions = [];
 
-                    // Fallback: if response is still JSON-encoded string
-                    if (typeof aiText === 'string' && aiText.startsWith('{')) {
-                        try {
-                            const parsed = JSON.parse(aiText);
-                            if (parsed.text) {
-                                aiText = parsed.text;
-                                suggestions = parsed.suggestions || suggestions;
-                                richContent = parsed.rich_content || richContent;
-                            }
-                        } catch (e) { /* not JSON, use as is */ }
+                    try {
+                        // Check if response is JSON string
+                        const parsed = JSON.parse(data.response);
+                        if (parsed.text) {
+                            aiText = parsed.text;
+                            suggestions = parsed.suggestions || [];
+                        }
+                    } catch (e) {
+                        // Not JSON, use as is
                     }
 
-                    appendMessage(aiText, 'ai', message, richContent);
+                    appendMessage(aiText, 'ai', message);
 
+                    // Render suggestions
                     if (suggestions.length > 0) {
                         renderSuggestions(suggestions);
                     }
@@ -1245,97 +1206,7 @@
         function handleKeyPress(e) { if (e.key === 'Enter') sendMessage(); }
         function sendChip(msg) { document.getElementById('chat-input').value = msg; sendMessage(); }
 
-        // HTML escaping to prevent XSS
-        function escapeHtml(value) {
-            return String(value ?? '')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
-        }
-
-        // Convert URLs to clickable links (runs on already-escaped text)
-        function linkifyUrls(escapedText) {
-            return escapedText.replace(/(https?:\/\/[^\s<]+)/g, function (url) {
-                var clean = url.replace(/([.,;:!?\)\]]+)$/, '');
-                var tail = url.slice(clean.length);
-                return '<a href="' + clean + '" target="_blank" rel="noopener noreferrer" class="chat-link">' + clean + '</a>' + tail;
-            });
-        }
-
-        // Lightweight markdown renderer (escape first, then convert)
-        function renderMarkdown(text) {
-            var escaped = escapeHtml(text);
-            // Bold: **text**
-            escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-            // Italic: *text* (simple, no lookbehind for browser compat)
-            escaped = escaped.replace(/(\s|^)\*([^\*\s][^\*]*?)\*(\s|$|[.,;:!?])/g, '$1<em>$2</em>$3');
-            // Bullet points: lines starting with - or *
-            escaped = escaped.replace(/^[\-\*]\s+(.+)/gm, '<li>$1</li>');
-            // Wrap consecutive <li> in <ul>
-            escaped = escaped.replace(/((?:<li>.*<\/li>\s*)+)/g, '<ul class="list-disc pl-4 my-1">$1</ul>');
-            // Numbered list: lines starting with 1. 2. etc
-            escaped = escaped.replace(/^\d+\.\s+(.+)/gm, '<li>$1</li>');
-            // Linkify URLs
-            escaped = linkifyUrls(escaped);
-            // Line breaks
-            escaped = escaped.replace(/\n/g, '<br>');
-            return escaped;
-        }
-
-        // Convert Google Drive sharing URL to thumbnail
-        function convertGoogleDriveImageUrl(url) {
-            var fileMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-            if (fileMatch) return 'https://drive.google.com/thumbnail?id=' + fileMatch[1] + '&sz=w400';
-            var openMatch = url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/);
-            if (openMatch) return 'https://drive.google.com/thumbnail?id=' + openMatch[1] + '&sz=w400';
-            return url;
-        }
-
-        // Build rich content HTML (images + link buttons)
-        function buildRichContentHtml(richContent) {
-            if (!richContent) return '';
-            var html = '';
-            var images = richContent.images || [];
-            var links = richContent.links || [];
-
-            if (images.length > 0) {
-                html += '<div class="rich-images">';
-                for (var img of images) {
-                    var displayUrl = convertGoogleDriveImageUrl(img.url);
-                    var originalUrl = escapeHtml(img.url);
-                    var label = escapeHtml(img.label || 'Image');
-                    html += '<div class="rich-image-container">'
-                        + '<a href="' + originalUrl + '" target="_blank" rel="noopener noreferrer">'
-                        + '<img src="' + escapeHtml(displayUrl) + '" alt="' + label + '" class="rich-image" loading="lazy" onerror="this.closest(\'.rich-image-container\').style.display=\'none\'" />'
-                        + '</a>'
-                        + '<span class="rich-image-label">' + label + '</span>'
-                        + '</div>';
-                }
-                html += '</div>';
-            }
-
-            if (links.length > 0) {
-                html += '<div class="rich-links">';
-                for (var link of links) {
-                    var url = escapeHtml(link.url);
-                    var lbl = escapeHtml(link.label || 'Link');
-                    var iconMap = { 'staff_profile': 'person', 'map': 'map', 'programme_info': 'school' };
-                    var icon = iconMap[link.type] || 'link';
-                    html += '<a href="' + url + '" target="_blank" rel="noopener noreferrer" class="rich-link-btn">'
-                        + '<span class="material-icons text-sm">' + icon + '</span>'
-                        + '<span>' + lbl + '</span>'
-                        + '<span class="material-icons text-xs ml-auto">open_in_new</span>'
-                        + '</a>';
-                }
-                html += '</div>';
-            }
-
-            return html;
-        }
-
-        function appendMessage(text, sender, relatedQ = null, richContent = null) {
+        function appendMessage(text, sender, relatedQ = null) {
             const container = document.getElementById('chat-messages');
             const div = document.createElement('div');
             const isUser = sender === 'user';
@@ -1358,20 +1229,7 @@
                 </div>`;
             }
 
-            // Render content: markdown for AI, plain escaped for user
-            let contentHtml;
-            if (isUser) {
-                contentHtml = escapeHtml(text);
-            } else {
-                contentHtml = renderMarkdown(text);
-            }
-
-            // Append rich content (images + links) for AI messages
-            if (!isUser && richContent) {
-                contentHtml += buildRichContentHtml(richContent);
-            }
-
-            div.innerHTML = `${avatar}<div class="flex flex-col gap-1 max-w-[80%]"><div class="${itemsBg} p-3 rounded-2xl ${isUser ? 'rounded-tr-none' : 'rounded-tl-none'} shadow-sm text-sm">${contentHtml}</div>${feedback}</div>`;
+            div.innerHTML = `${avatar}<div class="flex flex-col gap-1 max-w-[80%]"><div class="${itemsBg} p-3 rounded-2xl ${isUser ? 'rounded-tr-none' : 'rounded-tl-none'} shadow-sm text-sm"><p>${text}</p></div>${feedback}</div>`;
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
         }

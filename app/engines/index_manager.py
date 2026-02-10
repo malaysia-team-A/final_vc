@@ -149,6 +149,8 @@ class IndexManager:
                 # Update state
                 self.last_index_time = end_time
                 self.last_index_count = count
+                changes = await self.check_data_changes()
+                self.last_index_hash = changes.get("current_hash")
 
                 # Record in history
                 record = {

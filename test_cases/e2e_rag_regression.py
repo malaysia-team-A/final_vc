@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 import sys
+from fastapi.testclient import TestClient
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -64,36 +65,6 @@ TEST_CASES = [
 ]
 
 
-def _fake_process_message(user_message, data_context="", conversation_history=None, language="en"):
-    """
-    Deterministic AI stub for endpoint-level regression:
-    - Always asks for context in phase-1.
-    - Returns context-grounded reply in phase-2.
-    """
-    if not data_context:
-        search_term = "self" if any(k in (user_message or "").lower() for k in ["my ", "who am i", "my gpa", "my grade"]) else None
-        return {
-            "response": "",
-            "suggestions": [],
-            "needs_context": True,
-            "search_term": search_term,
-        }
-
-    if "[NO_RELEVANT_DATA_FOUND]" in data_context:
-        return {
-            "response": "I could not find that specific information in our database.",
-            "suggestions": [],
-            "needs_context": False,
-        }
-
-    compact = " ".join(str(data_context).split())
-    return {
-        "response": compact[:700],
-        "suggestions": [],
-        "needs_context": False,
-    }
-
-
 def _parse_payload_text(raw_response):
     if not raw_response:
         return ""
@@ -107,49 +78,46 @@ def _parse_payload_text(raw_response):
 
 
 def run():
-    original_process_message = main.ai_engine.process_message
-    main.ai_engine.process_message = _fake_process_message
-
     rows = []
     passed = 0
 
-    try:
-        client = main.app.test_client()
-        for tc in TEST_CASES:
-            resp = client.post("/api/chat", json={"message": tc["query"]})
-            ok_http = resp.status_code == 200
-            payload = resp.get_json(silent=True) or {}
-            text = _parse_payload_text(payload.get("response", ""))
-            text_lower = text.lower()
+    client = TestClient(main.app)
+    for tc in TEST_CASES:
+        resp = client.post("/api/chat", json={"message": tc["query"]})
+        ok_http = resp.status_code == 200
+        try:
+            payload = resp.json()
+        except Exception:
+            payload = {}
+        text = _parse_payload_text(payload.get("response", ""))
+        text_lower = text.lower()
 
-            hit_expected = any(token in text_lower for token in [t.lower() for t in tc["expected_any"]])
-            has_no_data_phrase = any(
-                token in text_lower
-                for token in ["could not find", "cannot find", "not available", "not in our database"]
-            )
+        hit_expected = any(token in text_lower for token in [t.lower() for t in tc["expected_any"]])
+        has_no_data_phrase = any(
+            token in text_lower
+            for token in ["could not find", "cannot find", "not available", "not in our database"]
+        )
 
-            if tc["expect_no_data"]:
-                ok = ok_http and has_no_data_phrase
-            else:
-                ok = ok_http and hit_expected
+        if tc["expect_no_data"]:
+            ok = ok_http and has_no_data_phrase
+        else:
+            ok = ok_http and hit_expected
 
-            if ok:
-                passed += 1
+        if ok:
+            passed += 1
 
-            rows.append(
-                {
-                    "id": tc["id"],
-                    "query": tc["query"],
-                    "status_code": resp.status_code,
-                    "ok": ok,
-                    "expected_hit": hit_expected,
-                    "has_no_data_phrase": has_no_data_phrase,
-                    "response_preview": text[:240],
-                    "type": "no_data" if tc["expect_no_data"] else "grounded",
-                }
-            )
-    finally:
-        main.ai_engine.process_message = original_process_message
+        rows.append(
+            {
+                "id": tc["id"],
+                "query": tc["query"],
+                "status_code": resp.status_code,
+                "ok": ok,
+                "expected_hit": hit_expected,
+                "has_no_data_phrase": has_no_data_phrase,
+                "response_preview": text[:240],
+                "type": "no_data" if tc["expect_no_data"] else "grounded",
+            }
+        )
 
     total = len(rows)
     accuracy = (passed / total * 100.0) if total else 0.0

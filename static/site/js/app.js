@@ -1,14 +1,17 @@
 // Session & Auth State
 let sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-let jwtToken = null;
+let jwtToken = localStorage.getItem('ucsi_jwt');
 let verifiedUser = null;
-// Clear previous session data on load to force fresh login
-localStorage.removeItem('ucsi_jwt');
-localStorage.removeItem('ucsi_user');
-localStorage.removeItem('ucsi_high_until');
-let highSecurityExpiresAt = 0;
-if (isNaN(highSecurityExpiresAt) || Date.now() > highSecurityExpiresAt) {
+try {
+    verifiedUser = JSON.parse(localStorage.getItem('ucsi_user') || 'null');
+} catch (_) {
+    verifiedUser = null;
+    localStorage.removeItem('ucsi_user');
+}
+let highSecurityExpiresAt = Number(localStorage.getItem('ucsi_high_until') || 0);
+if (!Number.isFinite(highSecurityExpiresAt) || Date.now() > highSecurityExpiresAt) {
     highSecurityExpiresAt = null;
+    localStorage.removeItem('ucsi_high_until');
 }
 
 function isHighSecurityActive() {
@@ -75,9 +78,12 @@ window.onload = function () {
     if (jwtToken && verifiedUser) {
         updateLoginButton();
     } else {
+        jwtToken = null;
+        verifiedUser = null;
         localStorage.removeItem('ucsi_jwt');
         localStorage.removeItem('ucsi_user');
         clearHighSecurityState();
+        updateLoginButton();
     }
 
     if (highSecurityExpiresAt && Date.now() > highSecurityExpiresAt) {
@@ -259,6 +265,7 @@ async function sendMessage() {
             // PARSE JSON RESPONSE FROM AI ENGINE
             let aiText = data.response;
             let suggestions = [];
+            let richContent = null;
 
             try {
                 // Check if response is JSON string
@@ -266,12 +273,13 @@ async function sendMessage() {
                 if (parsed.text) {
                     aiText = parsed.text;
                     suggestions = parsed.suggestions || [];
+                    richContent = parsed.rich_content || null;
                 }
             } catch (e) {
                 // Not JSON, use as is
             }
 
-            appendMessage(aiText, 'ai', message);
+            appendMessage(aiText, 'ai', message, richContent);
 
             // Render suggestions
             if (suggestions.length > 0) {
@@ -390,7 +398,84 @@ function buildStructuredProfileHtml(text) {
     `;
 }
 
-function appendMessage(text, sender, relatedQ = null) {
+// --- Rich Content Helpers ---
+function linkifyUrls(escapedText) {
+    // Convert URLs in already-escaped text to clickable links
+    // Only match http/https URLs to prevent javascript: injection
+    // Runs after escapeHtml(), so text has &amp; for & etc.
+    return escapedText.replace(/(https?:\/\/[^\s]+)/g, function (url) {
+        // Strip trailing punctuation that's likely not part of the URL
+        var clean = url.replace(/([.,;:!?\)\]]+)$/, '');
+        var tail = url.slice(clean.length);
+        return '<a href="' + clean + '" target="_blank" rel="noopener noreferrer" class="chat-link">' + clean + '</a>' + tail;
+    });
+}
+
+function convertGoogleDriveImageUrl(url) {
+    // Convert Google Drive sharing URL to displayable thumbnail URL
+    const fileMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (fileMatch) {
+        return 'https://drive.google.com/thumbnail?id=' + fileMatch[1] + '&sz=w400';
+    }
+    const openMatch = url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/);
+    if (openMatch) {
+        return 'https://drive.google.com/thumbnail?id=' + openMatch[1] + '&sz=w400';
+    }
+    return url;
+}
+
+function getLinkIcon(type) {
+    switch (type) {
+        case 'staff_profile': return 'person';
+        case 'map': return 'map';
+        case 'programme_info': return 'school';
+        default: return 'link';
+    }
+}
+
+function buildRichContentHtml(richContent) {
+    if (!richContent) return '';
+    let html = '';
+    const images = richContent.images || [];
+    const links = richContent.links || [];
+
+    // Render images
+    if (images.length > 0) {
+        html += '<div class="rich-images">';
+        for (const img of images) {
+            const displayUrl = convertGoogleDriveImageUrl(img.url);
+            const originalUrl = escapeHtml(img.url);
+            const label = escapeHtml(img.label || 'Image');
+            html += '<div class="rich-image-container">'
+                + '<a href="' + originalUrl + '" target="_blank" rel="noopener noreferrer">'
+                + '<img src="' + escapeHtml(displayUrl) + '" alt="' + label + '" class="rich-image" loading="lazy" onerror="this.closest(\'.rich-image-container\').style.display=\'none\'" />'
+                + '</a>'
+                + '<span class="rich-image-label">' + label + '</span>'
+                + '</div>';
+        }
+        html += '</div>';
+    }
+
+    // Render links
+    if (links.length > 0) {
+        html += '<div class="rich-links">';
+        for (const link of links) {
+            const url = escapeHtml(link.url);
+            const label = escapeHtml(link.label || 'Link');
+            const icon = getLinkIcon(link.type);
+            html += '<a href="' + url + '" target="_blank" rel="noopener noreferrer" class="rich-link-btn">'
+                + '<span class="material-icons text-sm">' + icon + '</span>'
+                + '<span>' + label + '</span>'
+                + '<span class="material-icons text-xs ml-auto">open_in_new</span>'
+                + '</a>';
+        }
+        html += '</div>';
+    }
+
+    return html;
+}
+
+function appendMessage(text, sender, relatedQ = null, richContent = null) {
     const container = document.getElementById('chat-messages');
     const div = document.createElement('div');
     const isUser = sender === 'user';
@@ -414,8 +499,18 @@ function appendMessage(text, sender, relatedQ = null) {
     }
 
     const structuredProfileHtml = !isUser ? buildStructuredProfileHtml(text) : null;
-    const safeMessageHtml = `<p>${escapeHtml(text)}</p>`;
-    const contentHtml = structuredProfileHtml || safeMessageHtml;
+    let contentHtml;
+    if (structuredProfileHtml) {
+        contentHtml = structuredProfileHtml;
+    } else {
+        // Escape HTML first, then auto-linkify URLs in text
+        contentHtml = `<p>${linkifyUrls(escapeHtml(text))}</p>`;
+    }
+
+    // Append rich content (images + links) for AI messages
+    if (!isUser && richContent) {
+        contentHtml += buildRichContentHtml(richContent);
+    }
 
     div.innerHTML = `${avatar}<div class="flex flex-col gap-1 max-w-[80%]"><div class="${itemsBg} p-3 rounded-2xl ${isUser ? 'rounded-tr-none' : 'rounded-tl-none'} shadow-sm text-sm">${contentHtml}</div>${feedback}</div>`;
     container.appendChild(div);

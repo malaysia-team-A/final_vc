@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(find:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(copy \"c:\\\\Users\\\\leejb\\\\Desktop\\\\final\\\\code_hompage.html\" \"c:\\\\Users\\\\leejb\\\\Desktop\\\\final\\\\static\\\\site\\\\code_hompage.html\")"
     ]
   }
 }

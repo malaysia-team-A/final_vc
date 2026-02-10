@@ -35,6 +35,16 @@ except ImportError:
     SentenceTransformer = None  # type: ignore[assignment]
     print("Warning: RAG dependencies missing. Install faiss-cpu sentence-transformers PyPDF2")
 
+try:
+    from app.engines.query_rewriter import query_rewriter as _query_rewriter
+except ImportError:
+    _query_rewriter = None
+
+try:
+    from app.engines.reranker import reranker as _reranker
+except ImportError:
+    _reranker = None
+
 KNOWLEDGE_BASE_DIR = Path("data/knowledge_base")
 INDEX_FILE = KNOWLEDGE_BASE_DIR / "faiss_index.bin"
 METADATA_FILE = KNOWLEDGE_BASE_DIR / "faiss_metadata.pkl"
@@ -484,7 +494,7 @@ class RAGEngine:
           "sources": list[str]
         }
         """
-        confidence_threshold = 0.35
+        confidence_threshold = 0.45
         q = str(query or "").strip()
         if not q:
             return {
@@ -502,7 +512,28 @@ class RAGEngine:
                 "sources": [],
             }
 
-        query_variants = self._expand_query_variants(q) or [q]
+        # Use QueryRewriter for better query expansion if available
+        if _query_rewriter:
+            try:
+                rewritten = _query_rewriter.rewrite(q)
+                rewriter_queries = rewritten.get("search_queries", [])
+                # Merge rewriter queries with legacy expansion, deduplicating
+                legacy_variants = self._expand_query_variants(q) or [q]
+                seen_keys = set()
+                merged_variants = []
+                for v in ([q] + rewriter_queries + legacy_variants):
+                    key = str(v).strip().lower()
+                    if key and key not in seen_keys:
+                        seen_keys.add(key)
+                        merged_variants.append(str(v).strip())
+                    if len(merged_variants) >= 7:
+                        break
+                query_variants = merged_variants
+            except Exception:
+                query_variants = self._expand_query_variants(q) or [q]
+        else:
+            query_variants = self._expand_query_variants(q) or [q]
+
         effective_preferred = set(preferred_labels or [])
         effective_preferred.update(self._infer_preferred_labels(q))
         scoped_labels = self._expand_domain_scope(effective_preferred, q)
@@ -576,6 +607,23 @@ class RAGEngine:
                 deduped[key] = (text, score, source, label)
 
         ranked = sorted(deduped.values(), key=lambda item: item[1], reverse=True)
+
+        # Re-rank top candidates using cross-encoder for precision
+        if _reranker and len(ranked) > 2:
+            try:
+                doc_texts = [item[0] for item in ranked[:10]]
+                reranked = _reranker.rerank(q, doc_texts, top_k=min(n_results + 2, len(doc_texts)))
+                # Rebuild ranked list using reranker ordering, preserving metadata
+                reranked_results = []
+                for orig_idx, _, rerank_score in reranked:
+                    text, faiss_score, source, label = ranked[orig_idx]
+                    # Blend FAISS score with reranker score (70% reranker, 30% FAISS)
+                    blended = (rerank_score * 0.7) + (faiss_score * 0.3) if rerank_score > 0 else faiss_score
+                    reranked_results.append((text, max(blended, faiss_score * 0.8), source, label))
+                ranked = reranked_results
+            except Exception:
+                pass  # Keep original ranking on error
+
         max_confidence = float(ranked[0][1])
         has_relevant = max_confidence >= confidence_threshold
 

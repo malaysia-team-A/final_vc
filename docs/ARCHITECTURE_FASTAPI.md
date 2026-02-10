@@ -2,7 +2,7 @@
 
 This project runs on a single FastAPI-first runtime path with a unified chat module.
 
-**Version:** 3.1.0
+**Version:** 3.2.0
 **Updated:** 2026-02-10
 
 ## Entry Point
@@ -31,20 +31,28 @@ This project runs on a single FastAPI-first runtime path with a unified chat mod
 - `app/api/chat.py` - 통합 채팅 API (하이브리드 분류기, 보안, 모니터링 통합)
 - `app/api/admin.py` - 관리자 API (인덱스 관리, 모니터링, 미답변 분석)
 
-### Backup
-- `app/api/chat_legacy.py` - 이전 chat.py 백업
+### Support Engines
+- `app/engines/query_rewriter.py` - 쿼리 최적화/확장 (동의어, 엔티티 인식, 멀티쿼리)
+- `app/engines/reranker.py` - Cross-Encoder 재순위화
+- `app/engines/semantic_cache_engine.py` - 시맨틱 응답 캐시 (임베딩 유사도 0.92, TTL 1시간)
+- `app/engines/faq_cache_engine.py` - FAQ 캐시 (빈도 기반, 3회 이상 질문 자동 캐싱)
 
-## Removed Legacy Sync Engines
-- `app/engines/ai_engine.py`
-- `app/engines/data_engine.py`
-- `app/engines/feedback_engine.py`
-- `app/engines/db_engine.py`
+### Backup
+- `app/api/chat_legacy.py` - 이전 chat.py 백업 (레거시 라우팅 로직 보존)
+
+### Helpers & Utils
+- `app/api/chat_helpers.py` - 채팅 헬퍼 함수 (개인정보 포맷팅, 제안 생성, 언어 감지, **Rich Content 추출**)
+- `app/api/dependencies.py` - FastAPI 의존성 (JWT 검증, OAuth2 Bearer)
+- `app/utils/auth_utils.py` - 인증 유틸 (JWT 생성/검증, 비밀번호 해싱)
+- `app/utils/logging_utils.py` - 감사 로깅 (PII 마스킹)
 
 ## Notes
 - Mongo I/O for runtime is handled through `db_engine_async` (Motor).
-- RAG indexing/search is exposed via `rag_engine_async`.
-- Validation scripts in `scripts/checks/` and `scripts/verify_setup.py` were updated to async imports.
-- chat.py now includes prompt injection detection, input sanitization, and response validation.
+- RAG indexing/search is exposed via `rag_engine_async`, which wraps the sync `rag_engine.py` (FAISS) in a ThreadPoolExecutor (max 4 workers).
+- `chat.py` includes hybrid intent classification, prompt injection detection, input sanitization, response validation, and **rich content extraction** (links/images from RAG context).
+- `chat_legacy.py` preserves the previous routing logic (LLM planner + semantic router dual-path) as a backup.
+- All admin endpoints require `require_admin` dependency (JWT + admin role check).
+- Staff members are indexed as structured `[staff] name: X | role: Y | email: Z | profile_url: URL` format for better LLM comprehension and URL extraction.
 
 ## Mongo Collections (Runtime)
 - Canonical:
@@ -52,7 +60,7 @@ This project runs on a single FastAPI-first runtime path with a unified chat mod
   - `unanswered` (RAG misses / no-data logs)
   - `semantic_intents` (semantic router intent vectors)
   - `UCSI` or auto-detected student collection (`students`, `Students`, `UCSI_STUDENTS`)
-  - RAG domain data: `Hostel`, `UCSI_FACILITY`, `UCSI_ MAJOR`, `USCI_SCHEDUAL`, `UCSI_STAFF`, `UCSI_HOSTEL_FAQ`, `UCSI_University_Blocks_Data`
+  - RAG domain data: `Hostel`, `UCSI_FACILITY`, `UCSI_MAJOR`, `USCI_SCHEDUAL`, `UCSI_STAFF`, `UCSI_HOSTEL_FAQ`, `UCSI_University_Blocks_Data`
 - Optional legacy fallback (disabled by default):
   - `feedbacks` via `USE_LEGACY_FEEDBACK_COLLECTION=true`
   - `LearnedQA` / `BadQA` via `USE_LEGACY_QA_COLLECTIONS=true`
@@ -94,4 +102,25 @@ Response Validator
     │
     ├─ Valid → 응답 반환
     └─ Invalid → Safe Response 생성 + 로깅
+```
+
+## Rich Content Flow (v3.2.0)
+```
+RAG Context (검색 결과)
+    │
+    ▼
+_extract_rich_content()
+    ├─ [staff] profile_url → Staff Profile 링크
+    ├─ building_image: URL → 건물 이미지 (Google Drive 썸네일)
+    ├─ map: URL → 지도 링크
+    ├─ Url: URL → 프로그램 상세 링크
+    │
+    ▼
+Response Payload (rich_content 필드)
+    │
+    ▼
+Frontend (app.js)
+    ├─ buildRichContentHtml() → 이미지/링크 버튼 렌더링
+    ├─ linkifyUrls() → 텍스트 내 URL 자동 링크화
+    └─ convertGoogleDriveImageUrl() → Drive 썸네일 URL 변환
 ```
