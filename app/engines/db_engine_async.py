@@ -427,12 +427,71 @@ class AsyncDatabaseEngine:
                     "name": staff_name,
                     "role": str(member.get("role") or "").strip(),
                     "email": str(member.get("email") or "").strip(),
+                    "profile_url": str(member.get("profile_url") or "").strip(),
                     "major": str(doc.get("major") or "").strip(),
                 }
         except Exception as e:
             print(f"Staff lookup error: {e}")
 
         return None
+
+    async def search_by_name(self, query: str) -> Optional[Dict[str, Any]]:
+        """Search student and staff collections using name/keyword extracted from the query.
+
+        Runs in parallel with RAG to catch exact-name queries that vector search might miss.
+        Returns formatted context dict or None.
+        """
+        if self.db is None:
+            return None
+
+        # Strip common question words to extract the entity name/keyword
+        candidate = re.sub(
+            r"(?i)\b(tell|me|about|who|is|what|show|find|information|info|can|are|does|do|"
+            r"the|a|an|for|please|give|get|look|up|search|describe|explain|details|detail)\b",
+            " ", query,
+        )
+        candidate = re.sub(
+            r"(알려줘|알려주세요|누구야|누구예요|누구인가요|누구니|에\s*대해|정보|관련|알려|"
+            r"보여줘|보여주세요|이야기해줘|설명해줘)",
+            " ", candidate,
+        )
+        candidate = re.sub(r"\s+", " ", candidate).strip(" ?.,!")
+
+        if len(candidate) < 2:
+            return None
+
+        contexts: List[str] = []
+        sources: List[str] = []
+
+        # 1. Student search (exclude sensitive fields)
+        if self.student_coll is not None:
+            try:
+                escaped = re.escape(candidate)
+                student = await self.student_coll.find_one(
+                    {"STUDENT_NAME": {"$regex": escaped, "$options": "i"}},
+                    {"_id": 0, "Password": 0, "GPA": 0, "CGPA": 0, "DOB": 0, "STUDENT_NUMBER": 0},
+                )
+                if student:
+                    parts = ["[Student]"] + [f"{k}: {v}" for k, v in student.items() if v is not None]
+                    contexts.append(" | ".join(parts))
+                    sources.append(f"MongoDB:{self.student_collection_name}")
+            except Exception as e:
+                print(f"[DB] search_by_name student error: {e}")
+
+        # 2. Staff search
+        staff = await self.find_staff_by_name(candidate)
+        if staff:
+            parts = ["[Staff]"] + [f"{k}: {v}" for k, v in staff.items() if v]
+            contexts.append(" | ".join(parts))
+            sources.append("MongoDB:UCSI_STAFF")
+
+        if not contexts:
+            return None
+
+        return {
+            "context": "\n\n".join(contexts),
+            "sources": sources,
+        }
 
     async def save_feedback(self, feedback_data: Dict) -> bool:
         if self.db is None:

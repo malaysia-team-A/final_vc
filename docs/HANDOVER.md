@@ -1,82 +1,167 @@
-# UCSI 버디 인수인계 문서 (최신)
+# UCSI Buddy — 인수인계 문서
 
-- 작성일: 2026-02-10
-- 버전: 3.2.0
-- 대상: 다음 개발 세션 (백엔드/프런트엔드/QA)
+**버전:** 3.4.0 | **최종 업데이트:** 2026-02-12
 
-## 1. 현재 구조 핵심
-- 서버: `main.py` (FastAPI, 포트 8000)
-- 인증: `app/api/auth.py` (JWT, 2FA)
-- 채팅: `app/api/chat.py` (하이브리드 인텐트 분류기 통합)
-- 관리자: `app/api/admin.py` (JWT + admin role 체크 적용 완료)
-- 비동기 엔진: `ai_engine_async.py`, `db_engine_async.py`, `rag_engine_async.py`
-- RAG 코어: `rag_engine.py` (FAISS + MongoDB 인덱싱)
-- 인텐트 분류: `intent_classifier.py` (Keyword Guard → Vector → LLM 3단계)
-- 응답 검증: `response_validator.py` (할루시네이션 방지, 숫자 검증)
-- 모니터링: `monitoring.py` (응답 시간, RAG hit rate, 분류 통계)
+---
 
-## 2. 반드시 알고 시작할 사항
-1. 서버 시작 시 RAG 재색인이 자동 수행됨 (`index_mongodb_collections`)
-2. 개인 정보 질의는 JWT 로그인 필요 (`POST /api/login`)
-3. GPA/성적 질의는 비밀번호 재검증 필요 (`POST /api/verify_password`, 10분 유효)
-4. 피드백은 `Feedback` 컬렉션에 저장되며 RLHF 정책 신호로 활용됨
-   - 긍정 피드백 → 학습 응답 (learned response)
-   - 부정 피드백 → 가드 레일 (bad response guard)
-5. 관리자 API는 `require_admin` 의존성으로 JWT + admin 역할을 체크함
-6. 인텐트 분류는 3단계 하이브리드: Keyword Guard(즉시) → Vector Search(0.65+) → LLM Fallback
-7. UCSI 도메인 응답에 `rich_content` (링크/이미지)가 포함될 수 있음 → 프론트엔드에서 자동 렌더링
+## 현재 상태
 
-## 3. 주요 API
-- 인증
-  - `POST /api/login` - 학생 로그인 (학번 + 이름)
-  - `POST /api/verify_password` - 비밀번호 2FA (10분)
-  - `POST /api/logout`
-- 채팅
-  - `POST /api/chat` - 메인 채팅
-  - `POST /api/feedback` - 피드백 (positive/negative)
-  - `GET /api/export_chat` - 대화 내보내기
-- 관리자 (JWT + admin role 필요)
-  - `POST /api/admin/login` / `POST /api/admin/logout`
-  - `GET /api/admin/stats` - 통계
-  - `POST /api/admin/upload` - 문서 업로드 (PDF/TXT/CSV)
-  - `POST /api/admin/reindex` - 재인덱싱
-  - `GET /api/admin/files` / `DELETE /api/admin/files`
-  - `GET /api/admin/index/status` / `POST /api/admin/index/reindex`
-  - `GET /api/admin/index/history` / `GET /api/admin/index/changes`
-  - `GET /api/admin/monitoring/dashboard`
-  - `GET /api/admin/unanswered/analysis` / `GET /api/admin/unanswered/report`
-  - `GET /api/admin/health` (Public - 인증 불필요)
+프로젝트 완전 작동 상태. 모든 주요 기능 구현 완료, 알려진 버그 없음.
 
-## 4. 최근 검증 결과
-- Strict QA: `58/58` 통과
-- Stress Test: `300/300` HTTP 성공, `300/300` semantic 통과
-- 리포트 경로
-  - `data/reports/strict_qa_report_latest.csv`
-  - `data/reports/stress_test_report_latest.csv`
+---
 
-## 5. 완료된 사항 (v3.1.0 ~ v3.2.0)
-1. 관리자 API 인증 적용 (`require_admin` 의존성)
-2. 하이브리드 인텐트 분류기 도입 (`intent_classifier.py`)
-3. 응답 검증기 도입 (`response_validator.py`)
-4. 성능 모니터링 시스템 구축 (`monitoring.py`)
-5. 인덱스 관리 자동화 (`index_manager.py`)
-6. 미답변 질문 분석기 (`unanswered_analyzer.py`)
-7. UX 엔진 (`ux_engine.py`)
-8. **[v3.2.0]** Rich Content 지원 - Staff 프로필 링크, 건물 이미지, 프로그램/지도 링크
-9. **[v3.2.0]** Staff 인덱싱 개선 - 구조화된 key-value 포맷 (`rag_engine_async.py`)
-10. **[v3.2.0]** 응답 텍스트 URL 자동 링크화 (`app.js`)
+## 핵심 기술 스택
 
-## 6. 남은 이슈 (우선순위)
-1. **P0**: 세션/대화기록 영속성 - 현재 인메모리, 서버 재시작 시 유실 → MongoDB TTL 컬렉션 도입 필요
-2. **P1**: RAG 인덱스 디스크 캐싱 - 매 시작 시 전체 DB 재로드 → FAISS 디스크 캐싱 도입
-3. **P1**: 코드/프런트 문자열 인코딩 깨짐 정리 (`test_integration.py` 한글 테스트 케이스)
-4. **P1**: `chat_legacy.py` 정리 여부 결정 (현재 백업용으로 보존 중)
-5. **P2**: QA 자동화 파이프라인 정착 (CI/CD 연동)
-6. **P2**: 구조적 로깅 시스템 표준화
+| 구성 요소 | 기술 |
+|----------|------|
+| 웹 프레임워크 | FastAPI (비동기, uvicorn) |
+| LLM | Google Gemini `gemma-3-27b-it` (google-genai SDK) |
+| 임베딩 모델 | `paraphrase-multilingual-MiniLM-L12-v2` (SentenceTransformer, 로컬, 384차원) |
+| 벡터 검색 | FAISS (로컬 `data/knowledge_base/`) |
+| 문서 DB | MongoDB Atlas (Motor 비동기 드라이버) |
+| 인증 | JWT HS256 (`python-jose`) |
+| 프론트엔드 | 바닐라 HTML/JS (Tailwind CDN, Material Icons) |
 
-## 7. 다음 세션 권장 순서
-1. 세션 영속성 구현 (MongoDB TTL 컬렉션)
-2. FAISS 인덱스 디스크 캐싱 도입
-3. 인코딩 깨짐 정리 및 사용자 문구 검수
-4. strict/stress QA 재실행 → 결과 반영
-5. `docs/PROJECT_STATUS_ANALYSIS.md`에 최신 결과 반영
+---
+
+## 채팅 플로우 (3-Branch 라우팅)
+
+```
+POST /api/chat
+    │
+    ├─ [Branch 1] _is_personal_query()
+    │   "내 성적", "my gpa", "내 프로필" 등
+    │   → handle_personal_query()
+    │   ↳ JWT 필수 / GPA는 verify_password 2FA 추가 필요
+    │
+    ├─ [Branch 2] has_ucsi_keywords()
+    │   "hostel", "block", "diploma", "pet", "schedule" 등
+    │   → intent_classifier.classify()
+    │   ├─ query_type=aggregate → handle_llm_first_query()
+    │   └─ query_type=specific  → handle_ucsi_query()  ← RAG 검색
+    │
+    └─ [Branch 3] 나머지 (일반 지식, 인물 검색 등)
+        → handle_llm_first_query()
+        ↳ RAG + MongoDB 이름 검색 병렬 실행
+        ↳ 데이터 있음 → 보안 체크 → LLM with context
+        ↳ 데이터 없음 → LLM 자유 응답
+```
+
+---
+
+## 보안 구조
+
+### 학생 데이터 3중 보호
+
+1. **로그인 필수**: `handle_llm_first_query`에서 source에 `"student"` 포함 시 → `login_hint` 반환
+2. **JWT 검증**: `app/api/dependencies.py`의 `get_current_user_optional` Depends
+3. **GPA 2FA**: `high_security_sessions` 딕셔너리에 세션 키 등록 필요
+
+> 중요: UCSI 도메인 데이터(스케줄, 기숙사, 건물 등)는 로그인 없이 접근 가능.
+> `is_student_data` 체크는 소스에 `"student"` 키워드가 있을 때만 true.
+
+### FAISS 민감정보 제외 (`rag_engine_async.py`)
+
+```python
+_SENSITIVE_FIELDS = {"password", "Password", "gpa", "GPA", "cgpa", "CGPA",
+                     "dob", "DOB", "date_of_birth", "STUDENT_NUMBER", "student_number"}
+```
+
+---
+
+## 임베딩 모델 주의사항
+
+- **모델**: `paraphrase-multilingual-MiniLM-L12-v2` (한/영 동시 지원, 384차원)
+- **캐시**: `C:\Users\[사용자]\.cache\huggingface\hub\`
+- **오프라인 모드**: `main.py` 최상단 `HF_HUB_OFFLINE=1` → 네트워크 없이 캐시에서 로드
+- **모델 변경 시**: FAISS 인덱스 삭제 후 재시작 필수
+  - `data/knowledge_base/faiss_index.bin`
+  - `data/knowledge_base/faiss_metadata.pkl`
+
+---
+
+## MongoDB 컬렉션 구조
+
+| 컬렉션 | 주요 필드 | 용도 |
+|--------|----------|------|
+| `UCSI_University_Student_Data` | STUDENT_NAME, STUDENT_NUMBER, GPA, PROGRAMME_NAME, Password | 학생 정보 |
+| `UCSI_University_Staff_Data` | name, role, email, profile_url | 교직원 정보 |
+| `UCSI_University_Blocks_Data` | Name, BUILDING_IMAGE, MAP, Address | 캠퍼스 건물 |
+| `UCSI_University_Hostel_Data` | room_type, price, deposit | 기숙사 |
+| `UCSI_University_Programme_Data` | name, faculty, tuition, duration, Url | 학과/프로그램 |
+| `UCSI_University_Schedule_Data` | event, date | 학사 일정 |
+| `semantic_intents` | intent, example, embedding | SemanticRouter 시드 |
+| `learned_responses` | user_message, ai_response | RLHF 긍정 학습 |
+| `bad_responses` | user_message, ai_response, reason | RLHF 부정 가드 |
+
+---
+
+## Rich Content 렌더링
+
+API 응답에 `rich_content` 필드가 있으면 프론트엔드가 자동 렌더링:
+
+```json
+{
+  "response": "Block A is located at...",
+  "rich_content": {
+    "images": [{"url": "https://drive.google.com/file/d/...", "label": "Block A"}],
+    "links": [{"url": "https://maps.google.com/...", "type": "map", "label": "View on Map"}]
+  }
+}
+```
+
+- Google Drive URL → `toEmbedUrl()` 함수로 `uc?export=view&id=` 형식 자동 변환 후 `<img>` 렌더링
+- 링크 타입: `map`, `staff_profile`, `programme_info` → 아이콘 자동 선택
+
+---
+
+## 자주 발생하는 이슈 & 해결책
+
+| 증상 | 원인 | 해결책 |
+|------|------|--------|
+| 서버 시작 시 SSL/Network 에러 | HuggingFace 모델 다운로드 시도 | `HF_HUB_OFFLINE=1` 확인 (`main.py` 최상단) |
+| FAISS 검색 결과 이상 | 모델 변경 후 인덱스 미갱신 | `faiss_index.bin`, `faiss_metadata.pkl` 삭제 후 재시작 |
+| 로그인 상태에서도 login_hint | `user=user` 파라미터 누락 | `handle_llm_first_query(user=user)` 확인 |
+| 스케줄/기숙사 정보에서 login_hint | `is_student_data` 조건 과도 | `"student" in s.lower()` 조건만 사용 |
+| `Collection` bool TypeError | `if not self.collection:` 사용 | `if self.collection is None:` 으로 수정 |
+| KeyError: 'response' | 응답 키 불일치 | `result.get("text") or result.get("response", "")` 사용 |
+
+---
+
+## 개발 환경 설정
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python main.py
+```
+
+`.env` 필수 항목:
+```
+MONGO_URI=mongodb+srv://...
+GEMINI_API_KEY=AIza...
+SECRET_KEY=<32바이트 hex>
+ADMIN_PASSWORD=<관리자 비밀번호>
+HF_HUB_OFFLINE=1
+TRANSFORMERS_OFFLINE=1
+```
+
+---
+
+## 완료된 기능
+
+- [x] 학생 로그인 (학번 + 이름)
+- [x] GPA 2중 인증 (비밀번호)
+- [x] UCSI 도메인 정보 RAG 검색 (기숙사, 프로그램, 캠퍼스, 직원, 일정)
+- [x] 인물 쿼리 MongoDB 직접 검색 (학생/교직원)
+- [x] 다국어 지원 (한국어/영어 혼용 쿼리)
+- [x] 건물 이미지 인라인 표시 (Google Drive 임베드)
+- [x] 지도/프로필/프로그램 링크 버튼
+- [x] 채팅 기록 세션 저장
+- [x] 피드백 (좋아요/싫어요) + RLHF 학습
+- [x] 관리자 대시보드 (모니터링, 재인덱싱, 문서 업로드)
+- [x] Prompt Injection 탐지 (12패턴)
+- [x] 응답 할루시네이션 방지
+- [x] 시맨틱 캐시 (동일 질문 빠른 응답)
+- [x] FAISS 민감정보(GPA, 비밀번호) 인덱싱 제외

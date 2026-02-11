@@ -2,8 +2,8 @@
 
 This project runs on a single FastAPI-first runtime path with a unified chat module.
 
-**Version:** 3.2.0
-**Updated:** 2026-02-10
+**Version:** 3.2.1
+**Updated:** 2026-02-11
 
 ## Entry Point
 - `main.py`
@@ -11,7 +11,7 @@ This project runs on a single FastAPI-first runtime path with a unified chat mod
 ## Active Engine Layer
 
 ### Core Engines
-- `app/engines/ai_engine_async.py` - LLM 엔진 (Gemini, 대화 요약 포함)
+- `app/engines/ai_engine_async.py` - LLM 엔진 (Gemini, 대화 요약, **구조화된 Label: Value 포맷 프롬프트**)
 - `app/engines/db_engine_async.py` - DB 엔진 (MongoDB Motor)
 - `app/engines/rag_engine_async.py` - RAG 엔진 (비동기 래퍼, 인덱스 정보 조회)
 - `app/engines/rag_engine.py` - RAG 코어 (FAISS + MongoDB 인덱싱)
@@ -28,7 +28,7 @@ This project runs on a single FastAPI-first runtime path with a unified chat mod
 
 ## API Layer
 - `app/api/auth.py` - 인증 API
-- `app/api/chat.py` - 통합 채팅 API (하이브리드 분류기, 보안, 모니터링 통합)
+- `app/api/chat.py` - 통합 채팅 API (하이브리드 분류기, 보안, 모니터링, **Rich Content 중복 제거** 통합)
 - `app/api/admin.py` - 관리자 API (인덱스 관리, 모니터링, 미답변 분석)
 
 ### Support Engines
@@ -41,7 +41,7 @@ This project runs on a single FastAPI-first runtime path with a unified chat mod
 - `app/api/chat_legacy.py` - 이전 chat.py 백업 (레거시 라우팅 로직 보존)
 
 ### Helpers & Utils
-- `app/api/chat_helpers.py` - 채팅 헬퍼 함수 (개인정보 포맷팅, 제안 생성, 언어 감지, **Rich Content 추출**)
+- `app/api/chat_helpers.py` - 채팅 헬퍼 함수 (개인정보 포맷팅 **이모지 아이콘 포함**, 제안 생성, 언어 감지, **Rich Content 추출**)
 - `app/api/dependencies.py` - FastAPI 의존성 (JWT 검증, OAuth2 Bearer)
 - `app/utils/auth_utils.py` - 인증 유틸 (JWT 생성/검증, 비밀번호 해싱)
 - `app/utils/logging_utils.py` - 감사 로깅 (PII 마스킹)
@@ -49,10 +49,12 @@ This project runs on a single FastAPI-first runtime path with a unified chat mod
 ## Notes
 - Mongo I/O for runtime is handled through `db_engine_async` (Motor).
 - RAG indexing/search is exposed via `rag_engine_async`, which wraps the sync `rag_engine.py` (FAISS) in a ThreadPoolExecutor (max 4 workers).
-- `chat.py` includes hybrid intent classification, prompt injection detection, input sanitization, response validation, and **rich content extraction** (links/images from RAG context).
+- `chat.py` includes hybrid intent classification, prompt injection detection, input sanitization, response validation, **rich content extraction** (links/images from RAG context), and **rich content deduplication** (max 1 staff link, 1 map link, 1 image per query).
 - `chat_legacy.py` preserves the previous routing logic (LLM planner + semantic router dual-path) as a backup.
 - All admin endpoints require `require_admin` dependency (JWT + admin role check).
 - Staff members are indexed as structured `[staff] name: X | role: Y | email: Z | profile_url: URL` format for better LLM comprehension and URL extraction.
+- **[v3.2.1]** LLM system prompt enforces `Label: Value` formatting for structured info (staff, building, hostel, programme) with explicit examples. Raw URLs are prohibited in text output.
+- **[v3.2.1]** Student profile formatting includes emoji icons (🆔 학번, 👤 이름, 📚 전공 etc.) via `_format_personal_info()`.
 
 ## Mongo Collections (Runtime)
 - Canonical:
@@ -104,7 +106,7 @@ Response Validator
     └─ Invalid → Safe Response 생성 + 로깅
 ```
 
-## Rich Content Flow (v3.2.0)
+## Rich Content Flow (v3.2.0 → v3.2.1)
 ```
 RAG Context (검색 결과)
     │
@@ -116,11 +118,19 @@ _extract_rich_content()
     ├─ Url: URL → 프로그램 상세 링크
     │
     ▼
+[v3.2.1] Rich Content 중복 제거 (chat.py)
+    ├─ Staff 쿼리: 프로필 링크 최대 1개
+    ├─ Building 쿼리: 이미지 1개 + map 링크 1개
+    ├─ URL 기반 중복 제거 (deduplication)
+    │
+    ▼
 Response Payload (rich_content 필드)
     │
     ▼
-Frontend (app.js)
+Frontend (code_hompage.html)
     ├─ buildRichContentHtml() → 이미지/링크 버튼 렌더링
-    ├─ linkifyUrls() → 텍스트 내 URL 자동 링크화
+    ├─ stripRichUrls() → rich content URL을 텍스트에서 자동 제거
+    ├─ renderKeyValueBlock() → Label: Value 패턴 구조화 레이아웃
+    ├─ linkifyUrls() → 텍스트 내 남은 URL 자동 링크화
     └─ convertGoogleDriveImageUrl() → Drive 썸네일 URL 변환
 ```

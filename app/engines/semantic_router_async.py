@@ -1,7 +1,7 @@
 import asyncio
-import json
 import os
 import re
+import threading
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -9,130 +9,124 @@ import numpy as np
 
 try:
     from sentence_transformers import SentenceTransformer
+    HAS_ST = True
 except Exception:
     SentenceTransformer = None
+    HAS_ST = False
+
+_st_model = None
+_st_model_lock = threading.Lock()
+_st_model_load_attempted = False
+
+
+def _load_st_model() -> Optional[Any]:
+    """Lazily load SentenceTransformer to avoid heavy import-time initialization."""
+    global _st_model, _st_model_load_attempted
+
+    if not HAS_ST:
+        return None
+    if _st_model is not None:
+        return _st_model
+    if _st_model_load_attempted:
+        return None
+
+    with _st_model_lock:
+        if _st_model is not None:
+            return _st_model
+        if _st_model_load_attempted:
+            return None
+
+        _st_model_load_attempted = True
+        try:
+            _st_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+            print("[SemanticRouter] SentenceTransformer model loaded.")
+        except Exception as e:
+            _st_model = None
+            print(f"[SemanticRouter] SentenceTransformer load failed: {e}")
+        return _st_model
 
 from app.engines.db_engine_async import db_engine_async
 
-DEFAULT_MODEL_NAME = os.getenv("RAG_EMBEDDING_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
+# Constants
 DEFAULT_COLLECTION = os.getenv("SEMANTIC_ROUTER_COLLECTION", "semantic_intents")
 DEFAULT_INDEX = os.getenv("SEMANTIC_ROUTER_INDEX", "semantic_intent_vector_idx")
 MIN_CONFIDENCE = float(os.getenv("SEMANTIC_ROUTER_MIN_CONFIDENCE", "0.53"))
-ENABLED = str(os.getenv("SEMANTIC_ROUTER_ENABLED", "true")).strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
+ENABLED = str(os.getenv("SEMANTIC_ROUTER_ENABLED", "true")).strip().lower() in {"1", "true", "yes", "on"}
+EMBED_DIM = 384  # all-MiniLM-L6-v2
 
-# Seed data is intentionally data-driven so intent behavior can be tuned in DB
-# without continuously patching application routing rules.
+SEED_SOURCE = "default_seed_st_v1"
+
 DEFAULT_INTENT_EXAMPLES: Dict[str, List[str]] = {
     "personal_profile": [
-        "show my profile",
-        "show my student information",
-        "what is my nationality",
-        "내 정보 보여줘",
-        "내 프로필 알려줘",
-        "내 전공 알려줘",
+        "show my profile", "show my student information", "what is my nationality",
+        "내 정보 보여줘", "내 프로필 알려줘", "내 전공 알려줘",
     ],
     "personal_grade": [
-        "show my gpa",
-        "show my grades",
-        "what is my cgpa",
-        "내 gpa 알려줘",
-        "내 성적 보여줘",
-        "내 학점 알려줘",
+        "show my gpa", "show my grades", "what is my cgpa",
+        "내 gpa 알려줘", "내 성적 보여줘", "내 학점 알려줘",
     ],
     "ucsi_programme": [
-        "tell me about ucsi programme",
-        "tuition fee for this programme",
-        "entry requirement for ucsi",
-        "UCSI 전공 정보 알려줘",
-        "등록금 알려줘",
-        "입학 조건 알려줘",
+        "tell me about ucsi programme", "tuition fee for this programme", "entry requirement for ucsi",
+        "UCSI 전공 정보 알려줘", "등록금 알려줘", "입학 조건 알려줘",
     ],
     "ucsi_hostel": [
-        "ucsi hostel fee",
-        "hostel deposit",
-        "hostel policy",
-        "기숙사 비용 알려줘",
-        "기숙사 보증금 얼마야",
-        "기숙사 정책 알려줘",
+        "ucsi hostel fee", "hostel deposit", "hostel policy",
+        "기숙사 비용 알려줘", "기숙사 보증금 얼마야", "기숙사 정책 알려줘",
     ],
     "ucsi_staff": [
-        "who is the dean of this faculty",
-        "staff contact in ucsi",
-        "professor in computer science ucsi",
-        "UCSI 교수 정보 알려줘",
-        "학장 누구야",
-        "직원 연락처 알려줘",
+        "who is the dean of this faculty", "staff contact in ucsi", "professor in computer science ucsi",
+        "UCSI 교수 정보 알려줘", "학장 누구야", "직원 연락처 알려줘",
     ],
     "ucsi_facility": [
-        "where is the library on campus",
-        "campus facilities",
-        "is there a gym in ucsi",
-        "도서관 위치 알려줘",
-        "캠퍼스 시설 알려줘",
-        "프린터 어디 있어",
+        "where is the library on campus", "campus facilities", "is there a gym in ucsi",
+        "도서관 위치 알려줘", "캠퍼스 시설 알려줘", "프린터 어디 있어",
     ],
     "ucsi_schedule": [
-        "semester schedule ucsi",
-        "intake dates",
-        "exam period",
-        "학사 일정 알려줘",
-        "입학 시기 알려줘",
-        "시험 기간 언제야",
+        "semester schedule ucsi", "intake dates", "exam period",
+        "학사 일정 알려줘", "입학 시기 알려줘", "시험 기간 언제야",
     ],
     "general_person": [
-        "who is taylor swift",
-        "tell me about albert einstein",
-        "what do you know about cristiano ronaldo",
-        "이순신에 대해서 알려줘",
-        "vicky yiran에 대해 알려줘",
-        "김연아 누구야",
+        "who is taylor swift", "tell me about albert einstein",
+        "이순신에 대해서 알려줘", "김연아 누구야",
     ],
     "general_world": [
-        "what is machine learning",
-        "capital of malaysia",
-        "explain python",
-        "양자역학이 뭐야",
-        "말레이시아 수도는 어디야",
-        "파이썬이 뭐야",
+        "what is machine learning", "capital of malaysia",
+        "양자역학이 뭐야", "말레이시아 수도는 어디야",
     ],
     "capability_smalltalk": [
-        "can you do a handstand",
-        "can you dance",
-        "can you sing",
-        "물구나무 설 수 있어",
-        "춤출 수 있어",
-        "노래할 수 있어",
+        "can you do a handstand", "can you dance",
+        "물구나무 설 수 있어", "춤출 수 있어",
     ],
 }
 
 PERSONAL_INTENTS = {"personal_profile", "personal_grade"}
 UCSI_CONTEXT_INTENTS = {
-    "ucsi_programme",
-    "ucsi_hostel",
-    "ucsi_staff",
-    "ucsi_facility",
-    "ucsi_schedule",
+    "ucsi_programme", "ucsi_hostel", "ucsi_staff", "ucsi_facility", "ucsi_schedule",
 }
 
 
 def _cosine(a: np.ndarray, b: np.ndarray) -> float:
-    if a.size == 0 or b.size == 0:
-        return 0.0
     denom = float(np.linalg.norm(a) * np.linalg.norm(b))
-    if denom <= 0:
-        return 0.0
-    return float(np.dot(a, b) / denom)
+    return float(np.dot(a, b) / denom) if denom > 0 else 0.0
+
+
+def _embed(text: str) -> Optional[List[float]]:
+    model = _load_st_model()
+    if model is None:
+        return None
+    txt = str(text or "").strip()
+    if not txt:
+        return None
+    try:
+        vec = model.encode(txt, show_progress_bar=False)
+        return vec.tolist()
+    except Exception as e:
+        print(f"[SemanticRouter] Embed failed: {e}")
+        return None
 
 
 class AsyncSemanticRouter:
     def __init__(self):
-        self.model = None
-        self.dimension = 0
         self.collection = None
         self._ready = False
         self._init_lock = asyncio.Lock()
@@ -145,222 +139,91 @@ class AsyncSemanticRouter:
         async with self._init_lock:
             if self._ready:
                 return True
+            if not HAS_ST:
+                print("[SemanticRouter] Disabled: sentence-transformers not installed")
+                return False
+            if _load_st_model() is None:
+                print("[SemanticRouter] Disabled: sentence-transformers model unavailable")
+                return False
             if db_engine_async.db is None:
                 return False
-            if SentenceTransformer is None:
-                return False
             try:
-                self.model = SentenceTransformer(DEFAULT_MODEL_NAME)
-                self.dimension = int(self.model.get_sentence_embedding_dimension() or 384)
                 self.collection = db_engine_async.db[DEFAULT_COLLECTION]
                 await self._ensure_seed_data()
-                await self._ensure_vector_index()
                 self._ready = True
                 return True
-            except Exception:
+            except Exception as e:
+                print(f"[SemanticRouter] Init failed: {e}")
                 self._ready = False
                 return False
-
-    def _embed(self, text: str) -> Optional[List[float]]:
-        if not self.model:
-            return None
-        try:
-            vec = self.model.encode([str(text or "").strip()])[0]
-            return np.asarray(vec, dtype=np.float32).tolist()
-        except Exception:
-            return None
-
-    def _extract_turn_text(self, raw_content: Any) -> str:
-        text = str(raw_content or "").strip()
-        if not text:
-            return ""
-        if text.startswith("{") and text.endswith("}"):
-            try:
-                payload = json.loads(text)
-                if isinstance(payload, dict):
-                    candidate = payload.get("text")
-                    if isinstance(candidate, str) and candidate.strip():
-                        text = candidate.strip()
-            except Exception:
-                pass
-        text = re.sub(r"\s+", " ", text).strip()
-        return text[:280]
-
-    def _build_history_hint(
-        self,
-        conversation_history: Optional[List[Dict[str, Any]]],
-        user_message: str,
-    ) -> str:
-        if not isinstance(conversation_history, list) or not conversation_history:
-            return ""
-
-        history_items = [item for item in conversation_history if isinstance(item, dict)]
-        if not history_items:
-            return ""
-
-        # Current turn is already appended by chat.py; remove duplicate tail.
-        if str(history_items[-1].get("role") or "").strip().lower() == "user":
-            tail = self._extract_turn_text(history_items[-1].get("content"))
-            if tail and tail == str(user_message or "").strip():
-                history_items = history_items[:-1]
-
-        if not history_items:
-            return ""
-
-        picked: List[str] = []
-        user_count = 0
-        model_count = 0
-
-        for item in reversed(history_items):
-            role = str(item.get("role") or "").strip().lower()
-            content = self._extract_turn_text(item.get("content"))
-            if not content:
-                continue
-
-            if role == "user" and user_count < 2:
-                picked.append(content)
-                user_count += 1
-            elif role != "user" and model_count < 1:
-                picked.append(content)
-                model_count += 1
-
-            if user_count >= 2 and model_count >= 1:
-                break
-
-        if not picked:
-            return ""
-
-        picked.reverse()
-        hint = re.sub(r"\s+", " ", " ".join(picked)).strip()
-        return hint[:240]
-
-    def _should_blend_history(self, user_message: str) -> bool:
-        text = re.sub(r"\s+", " ", str(user_message or "").strip())
-        if not text:
-            return False
-        word_count = len(text.split())
-        char_count = len(text)
-        return word_count <= 7 or char_count <= 40
 
     async def _ensure_seed_data(self) -> None:
         if self.collection is None:
             return
         try:
-            existing = await self.collection.count_documents({"source": "default_seed_v1"})
+            existing = await self.collection.count_documents({"source": SEED_SOURCE})
             if existing > 0:
                 return
+            # Remove old incompatible seeds
+            await self.collection.delete_many(
+                {"source": {"$in": ["default_seed_v1", "default_seed_genai_v1"]}}
+            )
             docs = []
             for intent, examples in DEFAULT_INTENT_EXAMPLES.items():
                 for text in examples:
-                    vec = self._embed(text)
+                    vec = await asyncio.to_thread(_embed, text)
                     if not vec:
                         continue
-                    docs.append(
-                        {
-                            "intent": intent,
-                            "example": text,
-                            "embedding": vec,
-                            "source": "default_seed_v1",
-                            "created_at": datetime.now().isoformat(),
-                        }
-                    )
+                    docs.append({
+                        "intent": intent,
+                        "example": text,
+                        "embedding": vec,
+                        "source": SEED_SOURCE,
+                        "created_at": datetime.now().isoformat(),
+                    })
             if docs:
                 await self.collection.insert_many(docs, ordered=False)
-        except Exception:
-            return
+                print(f"[SemanticRouter] Seeded {len(docs)} intents with SentenceTransformer.")
+        except Exception as e:
+            print(f"[SemanticRouter] Seed error: {e}")
 
-    async def _ensure_vector_index(self) -> None:
-        if self.collection is None:
-            return
-        try:
-            await db_engine_async.db.command(
-                {
-                    "createSearchIndexes": DEFAULT_COLLECTION,
-                    "indexes": [
-                        {
-                            "name": DEFAULT_INDEX,
-                            "definition": {
-                                "fields": [
-                                    {
-                                        "type": "vector",
-                                        "path": "embedding",
-                                        "numDimensions": int(self.dimension),
-                                        "similarity": "cosine",
-                                    }
-                                ]
-                            },
-                        }
-                    ],
-                }
-            )
-        except Exception:
-            # Atlas permissions/tier may not allow automatic index creation.
-            # Query path has a local cosine fallback below.
-            return
+    def _extract_turn_text(self, raw_content: Any) -> str:
+        text = re.sub(r"\s+", " ", str(raw_content or "")).strip()
+        return text[:280]
 
-    def _extract_entity(self, user_message: str) -> Optional[str]:
-        text = str(user_message or "").strip()
-        if not text:
-            return None
-        patterns = [
-            r"^\s*who(?:'s| is)\s+(?P<name>.+?)\s*\??\s*$",
-            r"^\s*tell me (?:more )?about\s+(?P<name>.+?)\s*\??\s*$",
-            r"^\s*what do you know about\s+(?P<name>.+?)\s*\??\s*$",
-            r"^\s*(?P<name>[A-Za-z0-9가-힣.\-\'\s]+?)\s*(?:에 대해|에대해|에 대해서|에대해서|관련해서|에 관한)\s*(?:정보를\s*)?(?:알려줘|알려줄래|알려주세요|말해줘|설명해줘|소개해줘)?\s*\??\s*$",
-            r"^\s*(?P<name>[A-Za-z0-9가-힣.\-\'\s]+?)\s*(?:누구야|누구예요|누군가요)\s*\??\s*$",
-        ]
-        candidate = None
-        for pattern in patterns:
-            m = re.match(pattern, text, flags=re.IGNORECASE)
-            if m:
-                candidate = m.group("name")
+    def _build_history_hint(self, conversation_history, user_message: str) -> str:
+        if not conversation_history:
+            return ""
+        items = [i for i in conversation_history if isinstance(i, dict)]
+        if not items:
+            return ""
+        if str(items[-1].get("role")).lower() == "user":
+            tail = self._extract_turn_text(items[-1].get("content"))
+            if tail == str(user_message).strip():
+                items = items[:-1]
+        picked = []
+        uc = mc = 0
+        for item in reversed(items):
+            role = str(item.get("role")).lower()
+            txt = self._extract_turn_text(item.get("content"))
+            if not txt:
+                continue
+            if role == "user" and uc < 2:
+                picked.append(txt)
+                uc += 1
+            elif role != "user" and mc < 1:
+                picked.append(txt)
+                mc += 1
+            if uc >= 2 and mc >= 1:
                 break
-        if not candidate:
-            return None
-        candidate = re.sub(r"\s+", " ", str(candidate).strip())
-        candidate = candidate.strip(" \t\r\n?!.,\"'`")
-        candidate = re.sub(r"\s*(?:은|는|이|가|을|를|와|과|의)$", "", candidate)
-        candidate = re.sub(r"\s+", " ", candidate).strip()
-        if len(candidate) < 2:
-            return None
-        if len(candidate.split()) > 10:
-            return None
-        lowered = candidate.lower()
-        reject_terms = {
-            "ucsi",
-            "university",
-            "hostel",
-            "tuition",
-            "fee",
-            "fees",
-            "programme",
-            "program",
-            "course",
-            "faculty",
-            "campus",
-            "building",
-            "schedule",
-            "gpa",
-            "cgpa",
-            "기숙사",
-            "등록금",
-            "전공",
-            "학과",
-            "학부",
-            "프로그램",
-            "시설",
-            "도서관",
-            "일정",
-            "입학",
-            "장학금",
-            "학점",
-            "성적",
-        }
-        if any(term in lowered for term in reject_terms):
-            return None
-        return candidate
+        picked.reverse()
+        return " ".join(picked)[:240]
 
-    async def _vector_search_intents(self, query_vector: List[float], limit: int = 8) -> List[Dict[str, Any]]:
+    def _should_blend_history(self, user_message: str) -> bool:
+        text = str(user_message or "").strip()
+        return len(text.split()) <= 7 or len(text) <= 40
+
+    async def _vector_search_intents(self, query_vector: List[float], limit: int = 8) -> List[Dict]:
         if self.collection is None:
             return []
         try:
@@ -370,143 +233,107 @@ class AsyncSemanticRouter:
                         "index": DEFAULT_INDEX,
                         "path": "embedding",
                         "queryVector": query_vector,
-                        "numCandidates": max(40, int(limit) * 10),
-                        "limit": int(limit),
+                        "numCandidates": max(40, limit * 10),
+                        "limit": limit,
                     }
                 },
-                {
-                    "$project": {
-                        "_id": 0,
-                        "intent": 1,
-                        "example": 1,
-                        "score": {"$meta": "vectorSearchScore"},
-                    }
-                },
+                {"$project": {"_id": 0, "intent": 1, "score": {"$meta": "vectorSearchScore"}}}
             ]
-            return await self.collection.aggregate(pipeline).to_list(length=int(limit))
+            return await self.collection.aggregate(pipeline).to_list(length=limit)
         except Exception:
             return []
 
-    async def _local_similarity_fallback(self, query_vector: List[float], limit: int = 8) -> List[Dict[str, Any]]:
+    async def _local_similarity_fallback(self, query_vector: List[float], limit: int = 8) -> List[Dict]:
         if self.collection is None:
             return []
         try:
             docs = await self.collection.find(
-                {},
-                {"_id": 0, "intent": 1, "example": 1, "embedding": 1},
+                {"source": SEED_SOURCE},
+                {"_id": 0, "intent": 1, "embedding": 1}
             ).to_list(length=500)
-            qv = np.asarray(query_vector, dtype=np.float32)
-            ranked: List[Dict[str, Any]] = []
+            qv = np.array(query_vector, dtype=np.float32)
+            ranked = []
             for doc in docs:
                 emb = doc.get("embedding")
-                if not isinstance(emb, list) or not emb:
+                if not emb or len(emb) != EMBED_DIM:
                     continue
-                sv = _cosine(qv, np.asarray(emb, dtype=np.float32))
-                ranked.append(
-                    {
-                        "intent": str(doc.get("intent") or ""),
-                        "example": str(doc.get("example") or ""),
-                        "score": float(max(min(sv, 1.0), -1.0)),
-                    }
-                )
+                score = _cosine(qv, np.array(emb, dtype=np.float32))
+                ranked.append({"intent": doc.get("intent"), "score": score})
             ranked.sort(key=lambda x: x["score"], reverse=True)
-            return ranked[: int(limit)]
+            return ranked[:limit]
         except Exception:
             return []
 
-    def _aggregate_intent_score(self, rows: List[Dict[str, Any]]) -> Dict[str, float]:
-        intent_stats: Dict[str, Dict[str, float]] = {}
-        for row in rows:
-            intent = str(row.get("intent") or "").strip()
+    def _aggregate_intent_score(self, rows: List[Dict]) -> Dict[str, float]:
+        stats: Dict[str, Dict] = {}
+        for r in rows:
+            intent = r.get("intent")
+            score = float(r.get("score", 0.0))
             if not intent:
                 continue
-            score = float(row.get("score") or 0.0)
-            score = max(min(score, 1.0), -1.0)
-            stats = intent_stats.setdefault(intent, {"max": -1.0, "sum": 0.0, "count": 0.0})
-            stats["max"] = max(stats["max"], score)
-            stats["sum"] += score
-            stats["count"] += 1.0
+            s = stats.setdefault(intent, {"max": 0.0, "sum": 0.0, "count": 0})
+            s["max"] = max(s["max"], score)
+            s["sum"] += score
+            s["count"] += 1
+        return {k: (v["max"] * 0.8) + (v["sum"] / v["count"] * 0.2) for k, v in stats.items()}
 
-        out: Dict[str, float] = {}
-        for intent, stats in intent_stats.items():
-            avg = stats["sum"] / max(1.0, stats["count"])
-            mixed = (stats["max"] * 0.75) + (avg * 0.25)
-            out[intent] = float(max(min(mixed, 1.0), -1.0))
-        return out
+    def _extract_entity(self, message: str) -> Optional[str]:
+        m = re.search(r"who(?:'s| is)\s+(?P<name>.+?)\??$", str(message).strip(), re.I)
+        return m.group("name").strip() if m else None
 
     async def classify(
         self,
         user_message: str,
-        search_term: Optional[str] = None,
+        search_term: str = None,
         language: str = "en",
-        conversation_history: Optional[List[Dict[str, Any]]] = None,
-    ) -> Optional[Dict[str, Any]]:
-        if not str(user_message or "").strip():
+        conversation_history=None,
+    ) -> Optional[Dict]:
+        if not user_message:
             return None
-        ok = await self.initialize()
-        if not ok:
+        if not await self.initialize():
             return None
 
-        query = str(user_message or "").strip()
+        query = str(user_message).strip()
         if search_term:
-            query = f"{query} {str(search_term).strip()}".strip()
-        query_vector = self._embed(query)
-        if not query_vector:
+            query += f" {search_term}"
+
+        qv = await asyncio.to_thread(_embed, query)
+        if not qv:
             return None
 
-        history_hint = self._build_history_hint(conversation_history, user_message=user_message)
-        used_history_context = False
-        if history_hint and self._should_blend_history(user_message):
-            history_vector = self._embed(history_hint)
-            if history_vector and len(history_vector) == len(query_vector):
-                qv = np.asarray(query_vector, dtype=np.float32)
-                hv = np.asarray(history_vector, dtype=np.float32)
-                blended = (qv * np.float32(0.80)) + (hv * np.float32(0.20))
-                norm = np.linalg.norm(blended)
-                if float(norm) > 0.0:
-                    blended = blended / norm
-                query_vector = blended.astype(np.float32).tolist()
-                used_history_context = True
+        if self._should_blend_history(user_message):
+            hint = self._build_history_hint(conversation_history, user_message)
+            if hint:
+                hv = await asyncio.to_thread(_embed, hint)
+                if hv:
+                    qv = (np.array(qv) * 0.7 + np.array(hv) * 0.3).tolist()
 
-        rows = await self._vector_search_intents(query_vector, limit=8)
+        rows = await self._vector_search_intents(qv)
         if not rows:
-            rows = await self._local_similarity_fallback(query_vector, limit=8)
+            rows = await self._local_similarity_fallback(qv)
         if not rows:
             return None
 
         scores = self._aggregate_intent_score(rows)
         if not scores:
             return None
-        best_intent, best_score = max(scores.items(), key=lambda kv: kv[1])
+
+        best_intent, best_score = max(scores.items(), key=lambda x: x[1])
 
         result: Dict[str, Any] = {
             "intent": best_intent,
-            "confidence": float(best_score),
+            "confidence": best_score,
             "language": language,
-            "top_matches": rows[:3],
             "is_personal": best_intent in PERSONAL_INTENTS,
             "needs_context": best_intent in UCSI_CONTEXT_INTENTS,
-            "entity": None,
-            "search_term": None,
-            "used_history_context": used_history_context,
         }
 
         if best_intent == "general_person":
             result["entity"] = self._extract_entity(user_message)
-        elif best_intent in UCSI_CONTEXT_INTENTS:
-            token = str(search_term or "").strip() or str(user_message or "").strip()
-            if not search_term and used_history_context and history_hint:
-                token = f"{history_hint} {token}".strip()
-            token = re.sub(r"\s+", " ", token).strip()
-            result["search_term"] = token[:80] if token else None
 
         if result["confidence"] < MIN_CONFIDENCE:
             result["intent"] = "unknown"
-            result["is_personal"] = False
             result["needs_context"] = False
-            result["search_term"] = None
-            result["entity"] = None
-            result["used_history_context"] = False
 
         return result
 

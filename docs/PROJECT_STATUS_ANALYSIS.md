@@ -1,13 +1,13 @@
 # 프로젝트 상태 분석 (최신)
 
-- 문서 기준일: 2026-02-10
-- 버전: 3.2.0
-- 분석 대상: 전체 코드베이스 심층 분석 (Architecture, Security, Performance, Persistence, Rich Content)
+- 문서 기준일: 2026-02-11
+- 버전: 3.2.1
+- 분석 대상: 전체 코드베이스 심층 분석 (Architecture, Security, Performance, Persistence, Rich Content, UX Formatting)
 
 ## 1. 현재 상태
 - **상태**: 운영 가능 (Production-Ready with known improvements)
 - **엔트리포인트**: `python main.py`
-- **서비스 포트**: `8000`
+- **서비스 포트**: `5000`
 - **라우터**: `auth`, `chat`, `admin` (비동기 엔진 기반)
 - **검증 결과**: Strict QA 58/58, Stress Test 300/300
 
@@ -47,11 +47,19 @@
 - RAG 컨텍스트에서 URL 자동 추출 (`_extract_rich_content`)
 - 응답 텍스트 내 URL 자동 링크화 (`linkifyUrls`)
 
+### UX 응답 포맷 개선 (v3.2.1)
+- **구조화된 Key-Value 렌더링**: `Label: Value` 패턴이 2개 이상 감지 시 자동으로 `.kv-block` 레이아웃으로 변환 (다크모드 대응)
+- **LLM 프롬프트 구조화 지시**: Staff, Building, Hostel, Programme 정보를 `Label: Value` 형태로 출력하도록 포맷 예시 포함
+- **학생 프로필 포맷**: 이모지 아이콘 + 구조화된 `Label: Value` 레이아웃 (🆔 학번, 👤 이름, 📚 전공 등)
+- **Rich Content 중복 제거**: Staff 쿼리 → 프로필 링크 1개, Building 쿼리 → 이미지 1개 + map 링크 1개로 제한
+- **URL 자동 제거**: 이미 rich content로 표시되는 URL을 텍스트에서 자동 스트립 (`stripRichUrls`)
+- **서비스 포트 변경**: 8000 → 5000 (전체 프로젝트 일괄 적용)
+
 ## 3. 엔진 구성 요약
 
 | 엔진 | 파일 | 역할 |
 |------|------|------|
-| AI Engine | `ai_engine_async.py` | Gemini LLM (회로차단기, 속도제한, 대화요약) |
+| AI Engine | `ai_engine_async.py` | Gemini LLM (회로차단기, 속도제한, 대화요약, 구조화된 응답 포맷) |
 | DB Engine | `db_engine_async.py` | MongoDB Motor (학생, 피드백, RLHF) |
 | RAG Engine | `rag_engine.py` + `_async.py` | FAISS 벡터 검색 + 도메인 부스팅 |
 | Intent Classifier | `intent_classifier.py` | 3단계 하이브리드 분류 |
@@ -117,5 +125,5 @@
 | E2E 회귀 | `e2e_rag_regression.py` | 8개 도메인 케이스 | 운영 중 |
 
 ## 6. 결론
-핵심 기능은 안정적으로 동작하며, v3.2.0에서 Rich Content 기능이 추가되어 Staff 프로필 링크, 건물 이미지, 프로그램 정보 링크가 채팅 응답에 포함됩니다.
+핵심 기능은 안정적으로 동작하며, v3.2.1에서 응답 포맷 UX가 대폭 개선되어 구조화된 정보(Staff, Building, Hostel, Programme, 학생 프로필)가 `Label: Value` 레이아웃으로 깔끔하게 표시됩니다. Rich Content 중복 문제도 해결되어 불필요한 링크/이미지 중복이 제거되었습니다.
 다음 단계의 핵심 과제는 **데이터 영속성(Persistence)**과 **시작 성능 최적화**이며, 실용적인 개선 계획이 수립되어 우선순위에 따라 순차 진행 예정입니다.

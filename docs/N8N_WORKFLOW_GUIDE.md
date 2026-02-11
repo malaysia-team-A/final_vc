@@ -18,7 +18,7 @@
 n8n에서 다음 Credentials를 설정하세요:
 
 ```
-UCSI_API_BASE_URL: http://localhost:8000
+UCSI_API_BASE_URL: http://localhost:5000
 UCSI_ADMIN_PASSWORD: (your admin password)
 ```
 
@@ -108,7 +108,7 @@ return testCases.map(tc => ({ json: tc }));
 ```json
 {
   "method": "POST",
-  "url": "http://localhost:8000/api/chat",
+  "url": "http://localhost:5000/api/chat",
   "body": {
     "message": "={{ $json.message }}",
     "conversation_id": "n8n_test_{{ $now.format('yyyyMMdd_HHmmss') }}"
@@ -197,7 +197,7 @@ return [{
 ```json
 {
   "method": "POST",
-  "url": "http://localhost:8000/api/login",
+  "url": "http://localhost:5000/api/login",
   "body": {
     "student_number": "1002345678",
     "name": "Test Student"
@@ -210,7 +210,7 @@ return [{
 ```json
 {
   "method": "POST",
-  "url": "http://localhost:8000/api/chat",
+  "url": "http://localhost:5000/api/chat",
   "headers": {
     "Authorization": "Bearer {{ $json.token }}"
   },
@@ -396,7 +396,7 @@ return results;
       "position": [450, 300],
       "parameters": {
         "method": "POST",
-        "url": "http://localhost:8000/api/chat",
+        "url": "http://localhost:5000/api/chat",
         "jsonParameters": true,
         "bodyParametersJson": "{\"message\": \"hostel fee?\", \"conversation_id\": \"n8n_test\"}"
       }
@@ -462,7 +462,7 @@ npx @anthropic/mcp-server-n8n
 
 1. **Connection Refused**
    - 서버가 실행 중인지 확인
-   - 포트 확인 (기본: 8000)
+   - 포트 확인 (기본: 5000)
 
 2. **401 Unauthorized**
    - 토큰 만료 확인

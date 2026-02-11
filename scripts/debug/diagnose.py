@@ -6,7 +6,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 REPORT_FILE = PROJECT_ROOT / "data" / "reports" / "stress_test_report_latest.csv"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "reports"
-API_BASE = os.getenv("QA_API_BASE", "http://localhost:8000").rstrip("/")
+API_BASE = os.getenv("QA_API_BASE", "http://localhost:5000").rstrip("/")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def run_cmd(cmd, filename):

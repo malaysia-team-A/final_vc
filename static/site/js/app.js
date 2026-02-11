@@ -264,20 +264,28 @@ async function sendMessage() {
         else {
             // PARSE JSON RESPONSE FROM AI ENGINE
             let aiText = data.response;
-            let suggestions = [];
-            let richContent = null;
+            let suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+            let richContent = data.rich_content || null;
 
-            try {
-                // Check if response is JSON string
-                const parsed = JSON.parse(data.response);
-                if (parsed.text) {
-                    aiText = parsed.text;
-                    suggestions = parsed.suggestions || [];
-                    richContent = parsed.rich_content || null;
+            if (typeof data.response === 'string') {
+                try {
+                    // Backward compatibility: older servers may return JSON string in response field
+                    const parsed = JSON.parse(data.response);
+                    if (parsed.text) {
+                        aiText = parsed.text;
+                    }
+                    if (!suggestions.length && Array.isArray(parsed.suggestions)) {
+                        suggestions = parsed.suggestions;
+                    }
+                    if (!richContent && parsed.rich_content) {
+                        richContent = parsed.rich_content;
+                    }
+                } catch (e) {
+                    // Not JSON, use as is
                 }
-            } catch (e) {
-                // Not JSON, use as is
             }
+            if (aiText === null || aiText === undefined) aiText = '';
+            if (typeof aiText !== 'string') aiText = String(aiText);
 
             appendMessage(aiText, 'ai', message, richContent);
 
@@ -436,20 +444,34 @@ function getLinkIcon(type) {
 function buildRichContentHtml(richContent) {
     if (!richContent) return '';
     let html = '';
-    const images = richContent.images || [];
-    const links = richContent.links || [];
+    const images = Array.isArray(richContent.images) ? richContent.images : [];
+    const links = Array.isArray(richContent.links) ? richContent.links : [];
+    let displayImages = images.slice();
+    let displayLinks = links.slice();
+
+    // If only a Google Drive map link is available, render it inline as an image.
+    if (displayImages.length === 0) {
+        const driveMap = displayLinks.find(
+            link => link && link.type === 'map' && /drive\.google\.com/i.test(String(link.url || ''))
+        );
+        if (driveMap) {
+            displayImages.push({
+                url: driveMap.url,
+                type: 'building_image',
+                label: driveMap.label || 'Campus Map'
+            });
+            displayLinks = displayLinks.filter(link => link !== driveMap);
+        }
+    }
 
     // Render images
-    if (images.length > 0) {
+    if (displayImages.length > 0) {
         html += '<div class="rich-images">';
-        for (const img of images) {
+        for (const img of displayImages) {
             const displayUrl = convertGoogleDriveImageUrl(img.url);
-            const originalUrl = escapeHtml(img.url);
             const label = escapeHtml(img.label || 'Image');
             html += '<div class="rich-image-container">'
-                + '<a href="' + originalUrl + '" target="_blank" rel="noopener noreferrer">'
                 + '<img src="' + escapeHtml(displayUrl) + '" alt="' + label + '" class="rich-image" loading="lazy" onerror="this.closest(\'.rich-image-container\').style.display=\'none\'" />'
-                + '</a>'
                 + '<span class="rich-image-label">' + label + '</span>'
                 + '</div>';
         }
@@ -457,9 +479,9 @@ function buildRichContentHtml(richContent) {
     }
 
     // Render links
-    if (links.length > 0) {
+    if (displayLinks.length > 0) {
         html += '<div class="rich-links">';
-        for (const link of links) {
+        for (const link of displayLinks) {
             const url = escapeHtml(link.url);
             const label = escapeHtml(link.label || 'Link');
             const icon = getLinkIcon(link.type);

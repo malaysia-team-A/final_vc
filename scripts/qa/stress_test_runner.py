@@ -9,7 +9,7 @@ from pathlib import Path
 
 import requests
 
-API_URL = os.getenv("QA_API_URL", "http://localhost:8000/api/chat")
+API_URL = os.getenv("QA_API_URL", "http://localhost:5000/api/chat")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 QUESTIONS_FILE = Path(__file__).with_name("stress_test_questions_300.json")
 REPORT_FILE = PROJECT_ROOT / "data" / "reports" / "stress_test_report_latest.csv"

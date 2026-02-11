@@ -1,4 +1,8 @@
 import os
+# Force HuggingFace to use cached models only (no network calls)
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 from datetime import datetime
@@ -81,4 +85,4 @@ async def read_admin():
 if __name__ == "__main__":
     import uvicorn
     # Updated to main:app
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=5000, reload=True)

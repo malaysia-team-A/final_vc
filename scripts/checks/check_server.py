@@ -3,7 +3,7 @@ import os
 import requests
 
 
-API_BASE = os.getenv("QA_API_BASE", "http://localhost:8000").rstrip("/")
+API_BASE = os.getenv("QA_API_BASE", "http://localhost:5000").rstrip("/")
 
 try:
     print("Checking server...")

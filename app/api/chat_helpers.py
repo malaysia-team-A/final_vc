@@ -1,10 +1,8 @@
 import json
 import re
-import secrets
 from typing import Any, Dict, List, Optional
 
 from app.config import Config
-from app.schemas import ChatRequest
 
 
 def _extract_rich_content(context_text: str) -> Dict[str, Any]:
@@ -83,7 +81,7 @@ def _extract_rich_content(context_text: str) -> Dict[str, Any]:
             seen_urls.add(url)
             links.append({"url": url, "type": "programme_info", "label": "More Information"})
 
-    return {"links": links, "images": images}
+    return {"links": links[:5], "images": images[:3]}
 
 def _user_student_number(user: Optional[dict]) -> str:
     return str((user or {}).get("sub") or (user or {}).get("student_number") or "").strip()
@@ -93,18 +91,6 @@ def _user_display_name(user: Optional[dict]) -> str:
     name = str((user or {}).get("name") or "").strip()
     return name or "Guest"
 
-
-def _resolve_session(user: Optional[dict], request_body: ChatRequest):
-    student_number = _user_student_number(user)
-    if student_number:
-        return f"user:{student_number}", student_number, False
-
-    cid = request_body.conversation_id
-    if cid:
-        return f"guest:{cid}", cid, False
-
-    new_id = secrets.token_hex(8)
-    return f"guest:{new_id}", new_id, True
 
 
 def _contains_token(text: str, keyword: str) -> bool:
@@ -582,6 +568,8 @@ def _capability_smalltalk_response(message: str) -> str:
         "hi", "hello", "hey", "hii", "hiii", "yo", "sup",
         "good morning", "good afternoon", "good evening", "good night",
         "안녕", "안녕하세요", "하이", "헬로", "반가워", "반갑습니다",
+        "야", "이봐", "저기", "저기요", "ㅎㅇ", "ㅎㅎ", "ㅋㅋ",
+        "하잉", "방가", "방가워",
     }
     q_stripped = re.sub(r"[!?.~,]+$", "", q).strip()
     is_greeting = q_stripped in greeting_tokens or any(q_stripped.startswith(g) for g in greeting_tokens if len(g) > 2)
@@ -779,6 +767,21 @@ def _format_personal_info(
         },
     ]
 
+    # Emoji icons for each field for better visual presentation
+    field_icons = {
+        "student_number": "🆔",
+        "student_name": "👤",
+        "nationality": "🌐",
+        "gender": "⚧",
+        "programme": "📚",
+        "profile_status": "📋",
+        "intake": "📅",
+        "dob": "🎂",
+        "department": "🏛",
+        "gpa": "📊",
+        "advisor": "👨‍🏫",
+    }
+
     lines: List[str] = []
     for field in fields:
         if field["id"] == "gpa" and not allow_sensitive:
@@ -792,27 +795,29 @@ def _format_personal_info(
             if requested and field["id"] in requested:
                 label = field["label_ko"] if lang == "ko" else field["label_en"]
                 missing = "정보 없음" if lang == "ko" else "Not available"
-                lines.append(f"{label}: {missing}")
+                icon = field_icons.get(field["id"], "")
+                lines.append(f"{icon} {label}: {missing}")
             continue
         label = field["label_ko"] if lang == "ko" else field["label_en"]
-        lines.append(f"{label}: {value}")
+        icon = field_icons.get(field["id"], "")
+        lines.append(f"{icon} {label}: {value}")
 
     if not lines:
         if sensitive_hidden:
             if lang == "ko":
-                return "GPA/성적 정보는 비밀번호 인증 후에 확인할 수 있어요."
-            return "GPA/grade information is available after password verification."
+                return "🔒 GPA/성적 정보는 비밀번호 인증 후에 확인할 수 있어요."
+            return "🔒 GPA/grade information is available after password verification."
         if lang == "ko":
             return "요청하신 학생 정보를 찾지 못했어요."
         return "I could not find your student profile details."
 
-    header = "요청하신 학생 정보입니다." if lang == "ko" else "Here is your profile information."
+    header = "📋 학생 프로필 정보" if lang == "ko" else "📋 Student Profile"
     text = header + "\n\n" + "\n".join(lines)
     if sensitive_hidden:
         if lang == "ko":
-            text += "\n\nGPA/성적 정보는 비밀번호 인증 후에 제공됩니다."
+            text += "\n\n🔒 GPA/성적 정보는 비밀번호 인증 후에 제공됩니다."
         else:
-            text += "\n\nGPA/grade details are shown after password verification."
+            text += "\n\n🔒 GPA/grade details are shown after password verification."
     return text
 
 

@@ -245,6 +245,71 @@
         </div>
     </div>
 
+    <!-- 7. UX Response Formatting (v3.2.1) -->
+    <div class="diagram-container">
+        <div class="label">7. UX Response Formatting Pipeline (v3.2.1)</div>
+        <div class="description">
+            End-to-end flow for structured response formatting: LLM outputs Label:Value format, Backend deduplicates
+            rich content, Frontend auto-renders structured KV layout and strips duplicate URLs.
+        </div>
+        <div class="mermaid">
+            flowchart TD
+            LLM["LLM (Gemini)"] -->|"Label: Value format"| Response["Response Text"]
+            RAG["RAG Context"] -->|"URLs extracted"| Extract["_extract_rich_content()"]
+
+            Extract --> Dedup{"Deduplication"}
+            Dedup -->|"Staff: max 1 link"| RC["rich_content payload"]
+            Dedup -->|"Building: 1 img + 1 map"| RC
+
+            Response --> Frontend["Frontend Renderer"]
+            RC --> Frontend
+
+            Frontend --> Strip["stripRichUrls()"]
+            Strip -->|"Remove URLs from text"| KV{"renderKeyValueBlock()"}
+            KV -->|"2+ Label:Value pairs"| Styled[".kv-block Layout"]
+            KV -->|"Normal text"| Markdown["renderMarkdown()"]
+
+            RC --> Buttons["buildRichContentHtml()"]
+            Buttons --> Images["Inline Images"]
+            Buttons --> Links["Link Buttons"]
+
+            style LLM fill:#e06c75,stroke:#fff,stroke-width:2px,color:#fff
+            style Styled fill:#98c379,stroke:#fff,stroke-width:2px,color:#000
+            style Dedup fill:#e5c07b,stroke:#fff,stroke-width:2px,color:#000
+        </div>
+    </div>
+
+    <!-- 8. Enhanced Intent Classification (v3.3.0) -->
+    <div class="diagram-container">
+        <div class="label">8. Enhanced Intent Classification (v3.3.0)</div>
+        <div class="description">
+            Advanced hybrid classification pipeline combining keyword rules, vector search, and LLM reasoning.
+            Automatically detects query types (Specific vs Aggregate) and entity types to optimize routing.
+        </div>
+        <div class="mermaid">
+            flowchart TD
+            Input[User Input] --> Config[Intent Config<br />(Single Source of Truth)]
+            Config --> Classify[Intent Classifier]
+
+            subgraph Classifier_Logic
+            Classify -->|Detect| Intent[Intent<br />(ucsi_staff/hostel...)]
+            Classify -->|Detect| QType[Query Type<br />(Specific / Aggregate)]
+            Classify -->|Detect| EType[Entity Type<br />(Staff/Building...)]
+            end
+
+            QType -->|Aggregate<br />(how many, list all)| RouteLLM[Route: LLM-First<br />(General Knowledge)]
+            QType -->|Specific<br />(who is, where is)| RouteRAG[Route: RAG Search<br />(Retrieval)]
+
+            RouteRAG --> Search[Vector Search]
+            RouteLLM --> Gen[Generation]
+
+            EType -.->|Filter| Rich[Rich Content Filter]
+            RouteRAG --> Rich
+            Rich --> Final[Response]
+            Gen --> Final
+        </div>
+    </div>
+
 </body>
 
 </html>

@@ -1,22 +1,25 @@
 # UCSI 버디 챗봇 문서 허브
 
-- 문서 기준일: 2026-02-10
-- 버전: 3.2.0
+- 문서 기준일: 2026-02-11
+- 버전: 3.2.1
 - 기준 코드: `main.py`, `app/api/*.py`, `app/engines/*.py`
-- 기본 실행 포트: `8000`
+- 기본 실행 포트: `5000`
 
 ## 1. 프로젝트 개요
 이 프로젝트는 UCSI 대학 도메인 질문을 우선 처리하는 RAG 기반 챗봇입니다.
 현재 서버는 FastAPI 비동기 구조로 동작하며 인증/개인정보 질의/일반 질의/관리자 기능이 API로 분리되어 있습니다.
 
-### 주요 기능 (v3.2.0)
+### 주요 기능 (v3.2.1)
 - **하이브리드 인텐트 분류**: Keyword Guard → Vector Search → LLM Fallback
 - **할루시네이션 방지**: 응답 검증 및 소스 기반 검증
 - **Self-Learning**: 피드백 기반 학습 (RLHF)
 - **보안 강화**: Prompt Injection 탐지 및 입력 Sanitization
 - **성능 모니터링**: 응답 시간, RAG hit rate, LLM 사용량 추적
 - **UX 개선**: 다국어 인사말, 에러 메시지, 후속 질문 제안
-- **Rich Content**: Staff 프로필 링크, 건물 이미지, 프로그램/지도 링크, URL 자동 링크화
+- **Rich Content**: Staff 프로필 링크, 건물 이미지, 프로그램/지도 링크 (중복 제거 적용)
+- **구조화된 응답 포맷**: LLM `Label: Value` 출력 → 프론트엔드 자동 KV 레이아웃 렌더링
+- **학생 프로필 이모지**: 🆔 학번, 👤 이름, 📚 전공 등 아이콘 부착
+- **URL 자동 스트립**: rich content로 표시되는 URL을 텍스트에서 자동 제거
 
 ## 2. 현재 아키텍처
 - 백엔드: FastAPI + Uvicorn
@@ -25,7 +28,7 @@
 - RAG: FAISS 인덱스 + MongoDB 컬렉션 인덱싱
 - LLM: Google GenAI SDK (`google-genai`)
 - 인텐트 분류: 하이브리드 (Keyword + Semantic + LLM)
-- 프런트엔드: `static/site/code_hompage.html` + `static/site/js/app.js`
+- 프런트엔드: `static/site/code_hompage.html` (KV 레이아웃, Rich Content, 다크모드)
 
 ## 3. API 요약
 - 인증
@@ -71,9 +74,9 @@ pip install -r requirements.txt
 python main.py
 ```
 5. 접속
-- 메인 UI: `http://localhost:8000/`
-- 관리자 UI: `http://localhost:8000/admin`
-- Swagger: `http://localhost:8000/docs`
+- 메인 UI: `http://localhost:5000/`
+- 관리자 UI: `http://localhost:5000/admin`
+- Swagger: `http://localhost:5000/docs`
 
 ## 5. QA/검증 스크립트
 - 환경 검증: `python scripts/verify_setup.py`

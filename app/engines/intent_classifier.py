@@ -17,6 +17,12 @@ from typing import Any, Dict, List, Optional
 
 from app.engines.semantic_router_async import semantic_router_async
 from app.engines.ai_engine_async import ai_engine_async
+from app.engines.intent_config import (
+    UCSI_KEYWORDS,
+    has_ucsi_keywords as _config_has_ucsi_keywords,
+    detect_entity_type as _config_detect_entity_type,
+    is_aggregate_query as _config_is_aggregate,
+)
 
 
 # =============================================================================
@@ -27,20 +33,7 @@ VECTOR_HIGH_CONFIDENCE = 0.65  # Vector result is trusted
 VECTOR_LOW_CONFIDENCE = 0.45   # Below this, definitely need LLM help
 LLM_MIN_CONFIDENCE = 0.55      # LLM result minimum to be trusted
 
-# UCSI domain keywords - if present, force RAG search
-UCSI_KEYWORDS = {
-    # English
-    "ucsi", "campus", "hostel", "dorm", "dormitory", "accommodation",
-    "tuition", "fee", "fees", "scholarship", "programme", "program",
-    "faculty", "department", "lecturer", "professor", "dean", "staff",
-    "library", "gym", "facility", "facilities", "cafeteria", "clinic",
-    "block", "building", "semester", "intake", "schedule", "calendar",
-    "exam", "examination", "registration", "enrollment", "admission",
-    # Korean
-    "기숙사", "숙소", "등록금", "학비", "장학금", "전공", "학과", "학부",
-    "교수", "강사", "학장", "직원", "도서관", "체육관", "시설", "식당",
-    "블록", "건물", "학기", "입학", "일정", "시험", "등록", "캠퍼스",
-}
+# UCSI_KEYWORDS is now imported from intent_config.py (single source of truth)
 
 # Personal query patterns
 PERSONAL_PATTERNS = [
@@ -59,21 +52,6 @@ PERSONAL_PATTERNS = [
 GRADE_PATTERNS = [
     r"\b(grade|gpa|cgpa|result|score|exam)\b",
     r"\b(성적|학점|점수|평점)\b",
-]
-
-# General knowledge indicators - likely NOT in DB
-GENERAL_KNOWLEDGE_PATTERNS = [
-    # Famous people questions
-    r"^who\s+is\s+(?!my\b)",
-    r"^tell\s+me\s+about\s+(?!ucsi|my|campus|hostel)",
-    r"누구(야|예요|인가요|니)\s*\??$",
-    r"에\s*대해\s*(알려|설명|말해)",
-    # General knowledge questions
-    r"^what\s+is\s+(a|an|the)?\s*\w+\s*\??$",
-    r"^how\s+(do|does|to)\b",
-    r"^why\s+(do|does|is|are)\b",
-    r"(뭐|무엇)(야|예요|인가요)\s*\??$",
-    r"어떻게\s*(하|해)",
 ]
 
 # Capability/smalltalk patterns
@@ -104,9 +82,8 @@ def _normalize_text(text: str) -> str:
 
 
 def _has_ucsi_keywords(message: str) -> bool:
-    """Check if message contains UCSI-related keywords."""
-    text = _normalize_text(message)
-    return any(keyword in text for keyword in UCSI_KEYWORDS)
+    """Check if message contains UCSI-related keywords. Delegates to intent_config."""
+    return _config_has_ucsi_keywords(message)
 
 
 def _is_personal_query(message: str) -> bool:
@@ -119,15 +96,6 @@ def _is_grade_query(message: str) -> bool:
     """Check if message is specifically about grades/GPA."""
     text = _normalize_text(message)
     return any(re.search(pattern, text, re.IGNORECASE) for pattern in GRADE_PATTERNS)
-
-
-def _is_general_knowledge(message: str) -> bool:
-    """Check if message looks like general knowledge question."""
-    text = _normalize_text(message)
-    # Must NOT have UCSI keywords
-    if _has_ucsi_keywords(message):
-        return False
-    return any(re.search(pattern, text, re.IGNORECASE) for pattern in GENERAL_KNOWLEDGE_PATTERNS)
 
 
 def _is_capability_query(message: str) -> bool:
@@ -155,12 +123,29 @@ def _map_intent_to_category(intent: str) -> str:
         return "personal"
     elif intent in ucsi_intents:
         return "ucsi_domain"
+    elif intent == "general_person":
+        # Check RAG for names (could be student/staff)
+        return "general_person_check"
     elif intent in general_intents:
         return "general_knowledge"
     elif intent in capability_intents:
         return "capability"
     else:
         return "unknown"
+
+
+def _detect_query_type(message: str) -> str:
+    """Detect whether the query is specific or aggregate.
+    Returns: 'aggregate' | 'specific'
+    """
+    if _config_is_aggregate(message):
+        return "aggregate"
+    return "specific"
+
+
+def _detect_entity(message: str) -> str | None:
+    """Detect entity type from message. Delegates to intent_config."""
+    return _config_detect_entity_type(message)
 
 
 # =============================================================================
@@ -230,6 +215,8 @@ class IntentClassifier:
                 "is_grade_query": is_grade,
                 "search_term": None,
                 "source": "keyword_guard",
+                "query_type": "specific",
+                "entity_type": None,
                 "debug": debug_info,
             }
 
@@ -238,6 +225,8 @@ class IntentClassifier:
             "hi", "hello", "hey", "hii", "hiii", "yo", "sup",
             "good morning", "good afternoon", "good evening",
             "안녕", "안녕하세요", "하이", "헬로", "반가워", "반갑습니다",
+            "야", "이봐", "저기", "저기요", "ㅎㅇ", "ㅎㅎ", "ㅋㅋ",
+            "하잉", "방가", "방가워",
         }
         msg_stripped = re.sub(r"[!?.~,]+$", "", _normalize_text(message)).strip()
         if msg_stripped in _greeting_tokens:
@@ -252,8 +241,30 @@ class IntentClassifier:
                 "is_grade_query": False,
                 "search_term": None,
                 "source": "keyword_guard",
+                "query_type": "specific",
+                "entity_type": None,
                 "debug": debug_info,
             }
+
+        # Short Korean casual message detection (3 chars or less, not UCSI keyword)
+        if len(msg_stripped) <= 3 and not _has_ucsi_keywords(message):
+            has_korean = any(0xAC00 <= ord(ch) <= 0xD7A3 or 0x3131 <= ord(ch) <= 0x318E for ch in msg_stripped)
+            if has_korean:
+                debug_info["keyword_guard"] = "short_korean_casual_detected"
+                debug_info["decision_reason"] = "Keyword guard: short Korean casual message"
+                return {
+                    "category": "capability",
+                    "intent": "capability_smalltalk",
+                    "confidence": 1.0,
+                    "needs_rag": False,
+                    "is_personal": False,
+                    "is_grade_query": False,
+                    "search_term": None,
+                    "source": "keyword_guard",
+                    "query_type": "specific",
+                    "entity_type": None,
+                    "debug": debug_info,
+                }
 
         # Capability/smalltalk check
         if _is_capability_query(message):
@@ -269,6 +280,8 @@ class IntentClassifier:
                 "is_grade_query": False,
                 "search_term": None,
                 "source": "keyword_guard",
+                "query_type": "specific",
+                "entity_type": None,
                 "debug": debug_info,
             }
 
@@ -304,17 +317,27 @@ class IntentClassifier:
             else:
                 final_intent = "ucsi_general"
 
-            debug_info["decision_reason"] = "UCSI keywords force RAG"
+            q_type = _detect_query_type(message)
+            e_type = _detect_entity(message)
+
+            # Aggregate queries: still classify as ucsi_domain but mark query_type
+            # so chat.py can route to LLM-First instead of RAG
+            if q_type == "aggregate":
+                debug_info["decision_reason"] = "UCSI keywords + aggregate query → LLM-First route"
+            else:
+                debug_info["decision_reason"] = "UCSI keywords force RAG"
 
             return {
                 "category": "ucsi_domain",
                 "intent": final_intent,
                 "confidence": max(vector_confidence, 0.7),
-                "needs_rag": True,
+                "needs_rag": q_type != "aggregate",
                 "is_personal": False,
                 "is_grade_query": False,
                 "search_term": _extract_search_term(message, final_intent),
                 "source": "keyword_guard",
+                "query_type": q_type,
+                "entity_type": e_type,
                 "debug": debug_info,
             }
 
@@ -323,15 +346,19 @@ class IntentClassifier:
             category = _map_intent_to_category(vector_intent)
             debug_info["decision_reason"] = f"Vector confidence high ({vector_confidence:.2f} >= {VECTOR_HIGH_CONFIDENCE})"
 
+            q_type = _detect_query_type(message)
+            e_type = _detect_entity(message)
             return {
-                "category": category,
+                "category": "personal" if category == "personal" else ("ucsi_domain" if category == "general_person_check" else category),
                 "intent": vector_intent,
                 "confidence": vector_confidence,
-                "needs_rag": category == "ucsi_domain",
+                "needs_rag": (category == "ucsi_domain" or category == "general_person_check") and q_type != "aggregate",
                 "is_personal": category == "personal",
                 "is_grade_query": vector_intent == "personal_grade",
-                "search_term": _extract_search_term(message, vector_intent) if category == "ucsi_domain" else None,
+                "search_term": _extract_search_term(message, vector_intent) if (category in ("ucsi_domain", "general_person_check")) else None,
                 "source": "vector",
+                "query_type": q_type,
+                "entity_type": e_type,
                 "debug": debug_info,
             }
 
@@ -340,20 +367,9 @@ class IntentClassifier:
         # =================================================================
 
         # Check if it looks like general knowledge (before calling LLM)
-        if _is_general_knowledge(message) and vector_confidence < VECTOR_LOW_CONFIDENCE:
-            debug_info["decision_reason"] = "General knowledge pattern + low vector confidence"
-
-            return {
-                "category": "general_knowledge",
-                "intent": "general_world",
-                "confidence": 0.6,
-                "needs_rag": False,
-                "is_personal": False,
-                "is_grade_query": False,
-                "search_term": None,
-                "source": "keyword_guard",
-                "debug": debug_info,
-            }
+        # Old logic removed: Do NOT assume general knowledge just because keywords are missing.
+        # We want to ask the LLM (plan_intent) to decide if it's UCSI related.
+        # if _is_general_knowledge(message) and vector_confidence < VECTOR_LOW_CONFIDENCE: ...
 
         # Call LLM for assistance
         llm_result = await ai_engine_async.plan_intent(
@@ -384,29 +400,37 @@ class IntentClassifier:
             # Override: if LLM says no context needed but vector found UCSI intent
             if not llm_needs_context and vector_intent.startswith("ucsi_") and vector_confidence >= VECTOR_LOW_CONFIDENCE:
                 debug_info["decision_reason"] = "LLM says no context, but vector found UCSI - trusting vector"
+                q_type = _detect_query_type(message)
+                e_type = _detect_entity(message)
                 return {
                     "category": "ucsi_domain",
                     "intent": vector_intent,
                     "confidence": vector_confidence,
-                    "needs_rag": True,
+                    "needs_rag": q_type != "aggregate",
                     "is_personal": False,
                     "is_grade_query": False,
                     "search_term": _extract_search_term(message, vector_intent),
                     "source": "hybrid",
+                    "query_type": q_type,
+                    "entity_type": e_type,
                     "debug": debug_info,
                 }
 
             debug_info["decision_reason"] = f"LLM confident ({llm_confidence:.2f} >= {LLM_MIN_CONFIDENCE})"
 
+            q_type = _detect_query_type(message)
+            e_type = _detect_entity(message)
             return {
                 "category": category,
                 "intent": llm_intent,
                 "confidence": llm_confidence,
-                "needs_rag": llm_needs_context or category == "ucsi_domain",
+                "needs_rag": (llm_needs_context or category == "ucsi_domain") and q_type != "aggregate",
                 "is_personal": category == "personal",
                 "is_grade_query": llm_intent == "personal_grade",
                 "search_term": (llm_result or {}).get("search_term") or _extract_search_term(message, llm_intent),
                 "source": "llm",
+                "query_type": q_type,
+                "entity_type": e_type,
                 "debug": debug_info,
             }
 
@@ -415,15 +439,19 @@ class IntentClassifier:
             category = _map_intent_to_category(vector_intent)
             debug_info["decision_reason"] = f"Both uncertain, using vector ({vector_confidence:.2f})"
 
+            q_type = _detect_query_type(message)
+            e_type = _detect_entity(message)
             return {
                 "category": category,
                 "intent": vector_intent,
                 "confidence": vector_confidence,
-                "needs_rag": category == "ucsi_domain",
+                "needs_rag": category == "ucsi_domain" and q_type != "aggregate",
                 "is_personal": category == "personal",
                 "is_grade_query": vector_intent == "personal_grade",
                 "search_term": _extract_search_term(message, vector_intent) if category == "ucsi_domain" else None,
                 "source": "vector",
+                "query_type": q_type,
+                "entity_type": e_type,
                 "debug": debug_info,
             }
 
@@ -439,6 +467,8 @@ class IntentClassifier:
             "is_grade_query": False,
             "search_term": None,
             "source": "fallback",
+            "query_type": "specific",
+            "entity_type": None,
             "debug": debug_info,
         }
 
@@ -453,6 +483,8 @@ class IntentClassifier:
             "is_grade_query": False,
             "search_term": None,
             "source": "error",
+            "query_type": "specific",
+            "entity_type": None,
             "debug": {"error": "Empty message"},
         }
 
