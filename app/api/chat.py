@@ -22,7 +22,10 @@ from app.core.session import (
     high_security_sessions,
 )
 from app.engines.intent_classifier import intent_classifier, _is_personal_query
-from app.engines.intent_config import has_ucsi_keywords as _config_has_ucsi_keywords
+from app.engines.intent_config import (
+    has_ucsi_keywords as _config_has_ucsi_keywords,
+    detect_entity_type as _config_detect_entity_type,
+)
 from app.engines.ai_engine_async import ai_engine_async
 from app.engines.db_engine_async import db_engine_async
 from app.engines.rag_engine_async import rag_engine_async
@@ -112,6 +115,81 @@ def _clean_context_for_llm(context: str) -> str:
     cleaned = re.sub(r"\[LOW_CONFIDENCE_CONTEXT\][^\n]*\n*", "", cleaned)
     cleaned = re.sub(r"\[FEEDBACK_GUARD\][^\n]*\n*", "", cleaned)
     return cleaned.strip()
+
+
+def _extract_staff_name_from_label(label: str) -> str:
+    text = str(label or "").strip()
+    text = text.replace("View ", "").replace("'s Profile", "").strip()
+    return text
+
+
+def _select_staff_link(links: List[Dict[str, Any]], query: str) -> Optional[Dict[str, Any]]:
+    staff_links = [lnk for lnk in (links or []) if lnk.get("type") == "staff_profile"]
+    if not staff_links:
+        return None
+
+    query_lower = str(query or "").lower()
+    best_link = None
+    best_score = 0
+
+    for lnk in staff_links:
+        staff_name = _extract_staff_name_from_label(lnk.get("label", ""))
+        if not staff_name:
+            continue
+        name_lower = staff_name.lower()
+        score = 0
+        if name_lower in query_lower:
+            score += 10
+        words = [w for w in re.split(r"[^a-z0-9]+", name_lower) if len(w) >= 3]
+        score += sum(1 for w in words if w in query_lower)
+        if score > best_score:
+            best_score = score
+            best_link = lnk
+
+    if best_link and best_score > 0:
+        return best_link
+    return staff_links[0] if len(staff_links) == 1 else None
+
+
+def _promote_drive_map_to_image(links: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    for lnk in links or []:
+        if lnk.get("type") != "map":
+            continue
+        map_url = str(lnk.get("url") or "")
+        if "drive.google.com" in map_url.lower():
+            return {
+                "url": map_url,
+                "type": "building_image",
+                "label": str(lnk.get("label") or "Campus Map"),
+            }
+    return None
+
+
+def _select_building_image(
+    images: List[Dict[str, Any]],
+    links: List[Dict[str, Any]],
+    user_msg: str,
+    search_term: str,
+    response_text: str,
+) -> Optional[Dict[str, Any]]:
+    img_list = list(images or [])
+    query_lower = f"{str(user_msg or '')} {str(search_term or '')}".lower()
+    response_lower = str(response_text or "").lower()
+
+    for img in img_list:
+        img_label = str(img.get("label") or "").lower()
+        if img_label and img_label in query_lower:
+            return img
+
+    for img in img_list:
+        img_label = str(img.get("label") or "").lower()
+        if img_label and img_label in response_lower:
+            return img
+
+    if img_list:
+        return img_list[0]
+
+    return _promote_drive_map_to_image(links or [])
 
 
 async def _log_rag_miss(
@@ -349,62 +427,59 @@ async def handle_ucsi_query(
     # Extract rich content only when query intent is relevant
     # Uses classifier metadata instead of hardcoded keywords
     query_type = classification.get("query_type", "specific")
-    entity_type = classification.get("entity_type")
+    entity_type = classification.get("entity_type") or _config_detect_entity_type(user_msg)
     rich_content = {"links": [], "images": []}
+    raw_rich = _extract_rich_content(rag_meta["context"])
 
     # Aggregate queries → NEVER get rich content links
     # Specific queries → filter by entity_type from classifier
     if query_type != "aggregate" and entity_type in ("staff", "building"):
-        raw_rich = _extract_rich_content(rag_meta["context"])
 
         if entity_type == "staff":
-            # Prefer a staff profile link matching the user query; fallback to first match.
-            staff_links = [lnk for lnk in raw_rich.get("links", []) if lnk.get("type") == "staff_profile"]
-            if staff_links:
-                query_lower = str(user_msg or "").lower()
-                selected_link = None
-                for lnk in staff_links:
-                    label = str(lnk.get("label") or "")
-                    staff_name = label.replace("View ", "").replace("'s Profile", "").strip()
-                    if staff_name and staff_name.lower() in query_lower:
-                        selected_link = lnk
-                        break
-                rich_content["links"].append(selected_link or staff_links[0])
+            selected_link = _select_staff_link(raw_rich.get("links", []), user_msg)
+            if selected_link:
+                rich_content["links"].append(selected_link)
+            else:
+                # Retry with Staff-only retrieval to avoid unrelated profile links.
+                try:
+                    staff_rag = await rag_engine_async.search_context(
+                        query=search_term,
+                        top_k=5,
+                        preferred_labels=["Staff"],
+                    )
+                    staff_rich = _extract_rich_content(str(staff_rag.get("context") or ""))
+                    retry_link = _select_staff_link(staff_rich.get("links", []), user_msg)
+                    if retry_link:
+                        rich_content["links"].append(retry_link)
+                except Exception:
+                    pass
 
         if entity_type == "building":
-            # Building queries should show an inline image whenever possible.
-            images = list(raw_rich.get("images", []))
-            response_lower = str(response_text or "").lower()
-            query_lower = f"{str(user_msg or '')} {str(search_term or '')}".lower()
-            selected_image = None
-
-            for img in images:
-                img_label = str(img.get("label") or "").lower()
-                if img_label and img_label in query_lower:
-                    selected_image = img
-                    break
+            selected_image = _select_building_image(
+                images=raw_rich.get("images", []),
+                links=raw_rich.get("links", []),
+                user_msg=user_msg,
+                search_term=search_term,
+                response_text=response_text,
+            )
             if selected_image is None:
-                for img in images:
-                    img_label = str(img.get("label") or "").lower()
-                    if img_label and img_label in response_lower:
-                        selected_image = img
-                        break
-            if selected_image is None and images:
-                selected_image = images[0]
-
-            # Fallback: when only map exists and it is a Drive URL, still render it as image.
-            if selected_image is None:
-                for lnk in raw_rich.get("links", []):
-                    if lnk.get("type") != "map":
-                        continue
-                    map_url = str(lnk.get("url") or "")
-                    if "drive.google.com" in map_url.lower():
-                        selected_image = {
-                            "url": map_url,
-                            "type": "building_image",
-                            "label": str(lnk.get("label") or "Campus Map"),
-                        }
-                        break
+                # Retry with CampusBlocks-only retrieval to guarantee block media.
+                try:
+                    block_rag = await rag_engine_async.search_context(
+                        query=search_term,
+                        top_k=5,
+                        preferred_labels=["CampusBlocks"],
+                    )
+                    block_rich = _extract_rich_content(str(block_rag.get("context") or ""))
+                    selected_image = _select_building_image(
+                        images=block_rich.get("images", []),
+                        links=block_rich.get("links", []),
+                        user_msg=user_msg,
+                        search_term=search_term,
+                        response_text=response_text,
+                    )
+                except Exception:
+                    selected_image = None
 
             if selected_image:
                 rich_content["images"].append(selected_image)
@@ -417,7 +492,6 @@ async def handle_ucsi_query(
 
     # Programme links: attach if entity_type is programme and not aggregate
     elif query_type != "aggregate" and entity_type == "programme":
-        raw_rich = _extract_rich_content(rag_meta["context"])
         for lnk in raw_rich.get("links", []):
             if lnk.get("type") == "programme_info":
                 rich_content["links"].append(lnk)
@@ -510,35 +584,24 @@ async def handle_llm_first_query(
         }
         raw_rich = _extract_rich_content("\n\n".join(all_contexts))
         rich_content = {"links": [], "images": []}
+        entity_type = _config_detect_entity_type(user_msg)
 
-        staff_link = next(
-            (lnk for lnk in raw_rich.get("links", []) if lnk.get("type") == "staff_profile"),
-            None,
-        )
-        if staff_link:
-            rich_content["links"].append(staff_link)
+        if entity_type == "staff":
+            selected_link = _select_staff_link(raw_rich.get("links", []), user_msg)
+            if selected_link:
+                rich_content["links"].append(selected_link)
 
-        first_image = next((img for img in raw_rich.get("images", []) if img.get("url")), None)
-        if first_image:
-            rich_content["images"].append(first_image)
-        else:
-            drive_map = next(
-                (
-                    lnk
-                    for lnk in raw_rich.get("links", [])
-                    if lnk.get("type") == "map"
-                    and "drive.google.com" in str(lnk.get("url") or "").lower()
-                ),
-                None,
+        elif entity_type == "building":
+            selected_image = _select_building_image(
+                images=raw_rich.get("images", []),
+                links=raw_rich.get("links", []),
+                user_msg=user_msg,
+                search_term=user_msg,
+                response_text=response_text,
             )
-            if drive_map:
-                rich_content["images"].append(
-                    {
-                        "url": drive_map.get("url"),
-                        "type": "building_image",
-                        "label": drive_map.get("label") or "Campus Map",
-                    }
-                )
+
+            if selected_image:
+                rich_content["images"].append(selected_image)
             else:
                 first_map = next(
                     (lnk for lnk in raw_rich.get("links", []) if lnk.get("type") == "map"),
@@ -601,14 +664,20 @@ async def chat(
         raw_msg = (body.message or "").strip()
 
         if not raw_msg:
-            return {"error": "Message is required", "session_id": conversation_id}
+            return {
+                "response": "Please type a message so I can help you!",
+                "type": "message",
+                "conversation_id": conversation_id,
+                "session_id": conversation_id,
+                "suggestions": ["What are the hostel fees?", "Show me programmes"],
+            }
 
         # [1.5] Sanitize input and detect prompt injection
         is_injection, injection_types = detect_prompt_injection(raw_msg)
         user_msg = sanitize_user_input(raw_msg, max_length=2000)
 
         if is_injection:
-            # Log the injection attempt but don't reveal detection
+            # Block the injection attempt immediately — never let it reach the LLM
             await _log_rag_miss(
                 conversation_id=conversation_id,
                 user_message=raw_msg[:200],
@@ -616,6 +685,13 @@ async def chat(
                 rag_meta={"confidence": 0, "sources": []},
                 reason=f"prompt_injection:{','.join(injection_types)}",
             )
+            return {
+                "response": "I'm sorry, I can't process that request.",
+                "type": "message",
+                "conversation_id": conversation_id,
+                "session_id": conversation_id,
+                "suggestions": [],
+            }
 
         # Save user message to history
         append_conversation_message(session_key, "user", user_msg)

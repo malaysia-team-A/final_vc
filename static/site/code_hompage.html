@@ -1229,8 +1229,10 @@
             const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
             if (!text) return '';
             const lines = text.split('\n');
+            // Strip leading emoji/non-ASCII chars before KV matching (handles _format_personal_info output)
+            const stripEmoji = l => l.replace(/^[^\x00-\x7F\s]+\s*/, '').trim();
             const kvRe = /^([A-Za-z][A-Za-z0-9\s\-\/]{1,30}):\s*(.+)$/;
-            const kvCount = lines.filter(l => kvRe.test(l.trim())).length;
+            const kvCount = lines.filter(l => kvRe.test(stripEmoji(l))).length;
             const nonEmpty = lines.filter(l => l.trim()).length;
 
             // If 50%+ non-empty lines are Key: Value → render as info card
@@ -1246,7 +1248,7 @@
                         if (inKv) afterKv = true;
                         return;
                     }
-                    const m = trimmed.match(kvRe);
+                    const m = stripEmoji(trimmed).match(kvRe);
                     if (m) {
                         inKv = true;
                         rows += `<div class="flex gap-2 py-0.5 border-b border-gray-100 dark:border-gray-600 last:border-0">

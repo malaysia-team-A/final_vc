@@ -25,7 +25,7 @@ UCSI_KEYWORDS: FrozenSet[str] = frozenset({
     "permission", "allowed", "forbidden", "ban", "fine", "penalty",
     "smoke", "smoking", "alcohol", "drinking", "parking", "car", "vehicle",
     "visitor", "guest", "curfew", "lockout",
-    "wifi", "internet", "network", "print", "printing", "atm", "bank",
+    "wifi", "internet", "print", "printing", "atm", "bank",
     "shuttle", "bus", "transport", "clinic", "doctor", "medical", "insurance",
     "aircon", "air conditioner", "laundry", "clean", "contract", "termination",
     "hours", "opening time", "close", "booking", "book", "holiday", "break",

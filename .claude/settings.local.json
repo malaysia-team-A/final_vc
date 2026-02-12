@@ -9,7 +9,9 @@
       "Bash(ls:*)",
       "Read(//c/Users/leejb/Desktop/final/**)",
       "Bash(python3:*)",
-      "Bash(powershell -Command:*)"
+      "Bash(powershell -Command:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(curl:*)"
     ]
   }
 }

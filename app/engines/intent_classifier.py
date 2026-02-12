@@ -37,13 +37,19 @@ LLM_MIN_CONFIDENCE = 0.55      # LLM result minimum to be trusted
 
 # Personal query patterns
 PERSONAL_PATTERNS = [
-    # English
-    r"\bmy\s+(grade|gpa|cgpa|result|profile|info|information|id|nationality|advisor|adviser|major|programme|program)\b",
+    # English — "my <optional_modifier> <keyword>"
+    r"\bmy\s+(?:\w+\s+)?(grade|gpa|cgpa|result|profile|info|information|id|nationality"
+    r"|advisor|adviser|major|programme|program|number|semester|room|tuition"
+    r"|fee|payment|attendance|enrollment|enroll|course|subject|scholarship)\b",
     r"\b(show|tell|what('s|is)?)\s+(me\s+)?my\b",
     r"\bwho\s+am\s+i\b",
     r"\bam\s+i\b",
+    # "I" as subject for enrollment/payment personal queries
+    r"\b(when|how|where)\s+did\s+i\s+(enroll|register|join|start|begin|graduate)\b",
+    r"\b(have|has)\s+i\s+(paid|registered|enrolled|completed)\b",
+    r"\bwhat\s+courses?\s+am\s+i\s+(enrolled|registered|taking)\b",
     # Korean
-    r"내\s*(정보|프로필|성적|학점|점수|gpa|국적|전공|학번|지도교수)",
+    r"내\s*(정보|프로필|성적|학점|점수|gpa|국적|전공|학번|지도교수|수강|수업|학기|호실|기숙사)",
     r"나는\s*누구",
     r"제\s*(정보|프로필|성적)",
 ]
